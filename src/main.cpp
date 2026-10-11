@@ -1,0 +1,423 @@
+#include <glad/glad.h>
+#include <SDL3/SDL.h>
+#include <imgui.h>
+#include <backends/imgui_impl_opengl3.h>
+#include <backends/imgui_impl_sdl3.h>
+
+#include <chrono>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
+#include "renderer/Camera.h"
+#include "renderer/PathTracerPipeline.h"
+#include "renderer/Scenes.h"
+
+#ifndef SHADERS_PATH
+#define SHADERS_PATH "./shaders"
+#endif
+
+#ifndef ASSETS_PATH
+#define ASSETS_PATH "./assets"
+#endif
+
+int main(int argc, char* argv[])
+{
+	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+	{
+		std::cerr << "Failed to initialize SDL3: " << SDL_GetError() << std::endl;
+		return 1;
+	}
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+	int windowWidth = 960;
+	int windowHeight = 540;
+
+	SDL_Window* window = SDL_CreateWindow(
+		"TFM Path Tracer Prototype",
+		windowWidth,
+		windowHeight,
+		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+	);
+
+	if (!window)
+	{
+		std::cerr << "Failed to create SDL3 window: " << SDL_GetError() << std::endl;
+		SDL_Quit();
+		return 1;
+	}
+
+	SDL_GLContext glContext = SDL_GL_CreateContext(window);
+	if (!glContext)
+	{
+		std::cerr << "Failed to create OpenGL context: " << SDL_GetError() << std::endl;
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
+
+	SDL_GL_MakeCurrent(window, glContext);
+	SDL_GL_SetSwapInterval(0); // Uncapped framerate for rapid path tracing accumulation
+
+	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
+	{
+		std::cerr << "Failed to initialize GLAD OpenGL loader!" << std::endl;
+		SDL_GL_DestroyContext(glContext);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
+
+	std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+	std::cout << "GLSL Version:   " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+	std::cout << "GPU Renderer:   " << glGetString(GL_RENDERER) << std::endl;
+
+	// Setup Dear ImGui
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	(void)io;
+	ImGui::StyleColorsDark();
+
+	ImGui_ImplSDL3_InitForOpenGL(window, glContext);
+	ImGui_ImplOpenGL3_Init("#version 460");
+
+	// Predefined scenes
+	auto scenes = renderer::getPredefinedScenes();
+	int currentSceneIndex = 0;
+
+	// Setup camera
+	renderer::Camera camera(scenes[currentSceneIndex].cameraPosition);
+	camera.yaw = scenes[currentSceneIndex].cameraYaw;
+	camera.pitch = scenes[currentSceneIndex].cameraPitch;
+	camera.updateVectors();
+	camera.updateMatrix(windowWidth, windowHeight);
+
+	// Setup Path Tracer pipeline
+	renderer::PathTracerPipeline::Config config;
+	config.renderWidth = windowWidth;
+	config.renderHeight = windowHeight;
+	config.rayBounces = 3;
+	config.maxAccumulationFrames = 150;
+	config.contrast = 1.15f;
+
+	renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
+	pipeline.setScene(scenes[currentSceneIndex]);
+
+	bool isTestMode = (argc > 1 && std::string(argv[1]) == "--test");
+	int testFrames = 0;
+
+	bool running = true;
+	bool mouseLooking = false;
+	float moveSpeed = 4.0f;
+	bool takeScreenshotRequested = false;
+	std::string lastScreenshotPath;
+
+	auto lastTime = std::chrono::high_resolution_clock::now();
+	auto startTime = lastTime;
+
+	while (running)
+	{
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+		lastTime = currentTime;
+		double totalTime = std::chrono::duration<double>(currentTime - startTime).count();
+
+		if (isTestMode)
+		{
+			testFrames++;
+			if (testFrames == 20)
+			{
+				currentSceneIndex = 1;
+				pipeline.setScene(scenes[currentSceneIndex]);
+				camera.position = scenes[currentSceneIndex].cameraPosition;
+				camera.yaw = scenes[currentSceneIndex].cameraYaw;
+				camera.pitch = scenes[currentSceneIndex].cameraPitch;
+				camera.updateVectors();
+			}
+			else if (testFrames == 40)
+			{
+				currentSceneIndex = 2;
+				pipeline.setScene(scenes[currentSceneIndex]);
+				camera.position = scenes[currentSceneIndex].cameraPosition;
+				camera.yaw = scenes[currentSceneIndex].cameraYaw;
+				camera.pitch = scenes[currentSceneIndex].cameraPitch;
+				camera.updateVectors();
+			}
+			else if (testFrames >= 60)
+			{
+				std::cout << "All scenes rendered successfully without errors." << std::endl;
+				running = false;
+				break;
+			}
+		}
+
+		SDL_Event event;
+		while (SDL_PollEvent(&event))
+		{
+			ImGui_ImplSDL3_ProcessEvent(&event);
+
+			switch (event.type)
+			{
+				case SDL_EVENT_QUIT:
+					running = false;
+					break;
+
+				case SDL_EVENT_KEY_DOWN:
+					if (!io.WantCaptureKeyboard && !event.key.repeat)
+					{
+						int targetScene = -1;
+						if (event.key.scancode == SDL_SCANCODE_1) targetScene = 0;
+						else if (event.key.scancode == SDL_SCANCODE_2) targetScene = 1;
+						else if (event.key.scancode == SDL_SCANCODE_3) targetScene = 2;
+
+						if (targetScene >= 0 && targetScene < static_cast<int>(scenes.size()) && targetScene != currentSceneIndex)
+						{
+							currentSceneIndex = targetScene;
+							pipeline.setScene(scenes[currentSceneIndex]);
+							camera.position = scenes[currentSceneIndex].cameraPosition;
+							camera.yaw = scenes[currentSceneIndex].cameraYaw;
+							camera.pitch = scenes[currentSceneIndex].cameraPitch;
+							camera.updateVectors();
+						}
+					}
+					break;
+
+				case SDL_EVENT_WINDOW_RESIZED:
+				case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+				{
+					int newW = 0, newH = 0;
+					SDL_GetWindowSizeInPixels(window, &newW, &newH);
+					if (newW > 0 && newH > 0 && (newW != windowWidth || newH != windowHeight))
+					{
+						windowWidth = newW;
+						windowHeight = newH;
+						pipeline.resize(windowWidth, windowHeight);
+						camera.updateMatrix(windowWidth, windowHeight);
+					}
+					break;
+				}
+
+				case SDL_EVENT_MOUSE_BUTTON_DOWN:
+					if (event.button.button == SDL_BUTTON_RIGHT)
+					{
+						mouseLooking = true;
+						SDL_SetWindowRelativeMouseMode(window, true);
+					}
+					break;
+
+				case SDL_EVENT_MOUSE_BUTTON_UP:
+					if (event.button.button == SDL_BUTTON_RIGHT)
+					{
+						mouseLooking = false;
+						SDL_SetWindowRelativeMouseMode(window, false);
+					}
+					break;
+
+				case SDL_EVENT_MOUSE_MOTION:
+					if (mouseLooking)
+					{
+						camera.processMouseMovement(event.motion.xrel, event.motion.yrel);
+						pipeline.resetAccumulation();
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
+
+		// Keyboard input for camera motion
+		if (!io.WantCaptureKeyboard || mouseLooking)
+		{
+			const bool* keyStates = SDL_GetKeyboardState(nullptr);
+			float fwd = 0.0f, right = 0.0f, up = 0.0f;
+
+			if (keyStates[SDL_SCANCODE_W]) fwd += 1.0f;
+			if (keyStates[SDL_SCANCODE_S]) fwd -= 1.0f;
+			if (keyStates[SDL_SCANCODE_D]) right += 1.0f;
+			if (keyStates[SDL_SCANCODE_A]) right -= 1.0f;
+			if (keyStates[SDL_SCANCODE_E] || keyStates[SDL_SCANCODE_SPACE]) up += 1.0f;
+			if (keyStates[SDL_SCANCODE_Q] || keyStates[SDL_SCANCODE_LCTRL]) up -= 1.0f;
+
+			float currentSpeed = moveSpeed;
+			if (keyStates[SDL_SCANCODE_LSHIFT])
+			{
+				currentSpeed *= 2.5f;
+			}
+
+			if (fwd != 0.0f || right != 0.0f || up != 0.0f)
+			{
+				camera.processKeyboard(fwd, right, up, deltaTime, currentSpeed);
+				pipeline.resetAccumulation();
+			}
+		}
+
+		camera.updateMatrix(windowWidth, windowHeight);
+
+		// Start ImGui frame
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplSDL3_NewFrame();
+		ImGui::NewFrame();
+
+		// Debug Settings Window
+		{
+			ImGui::Begin("Path Tracer Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+
+			ImGui::Text("FPS: %.1f (%.2f ms)", io.Framerate, 1000.0f / (io.Framerate > 0.0f ? io.Framerate : 1.0f));
+
+			int currentFrames = pipeline.getFrameCounter();
+			int maxFrames = pipeline.getConfig().maxAccumulationFrames;
+			float progress = static_cast<float>(std::min(currentFrames, maxFrames)) / static_cast<float>(maxFrames);
+
+			ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+			ImGui::SameLine();
+			ImGui::Text("%d / %d", currentFrames, maxFrames);
+
+			ImGui::SeparatorText("Scene Selection");
+			const char* sceneNames[] = {
+				"1. Cornell Box",
+				"2. Primitives Showcase",
+				"3. Hybrid Mesh + SDF"
+			};
+			if (ImGui::Combo("Scene", &currentSceneIndex, sceneNames, IM_ARRAYSIZE(sceneNames)))
+			{
+				pipeline.setScene(scenes[currentSceneIndex]);
+				camera.position = scenes[currentSceneIndex].cameraPosition;
+				camera.yaw = scenes[currentSceneIndex].cameraYaw;
+				camera.pitch = scenes[currentSceneIndex].cameraPitch;
+				camera.updateVectors();
+			}
+			ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3");
+
+			ImGui::SeparatorText("Path Tracer Settings");
+			if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
+			{
+				pipeline.resetAccumulation();
+			}
+			if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
+			{
+				pipeline.resetAccumulation();
+			}
+			if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
+			{
+				pipeline.resetAccumulation();
+			}
+
+			ImGui::SeparatorText("Camera");
+			if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
+			{
+				pipeline.resetAccumulation();
+			}
+			ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
+			ImGui::Text("Hold Right Mouse Button to Look Around");
+			ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
+
+			if (ImGui::Button("Reset Accumulation"))
+			{
+				pipeline.resetAccumulation();
+			}
+
+			if (ImGui::Button("Take Screenshot"))
+			{
+				takeScreenshotRequested = true;
+			}
+
+			if (!lastScreenshotPath.empty())
+			{
+				ImGui::SameLine();
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
+				ImGui::TextUnformatted(lastScreenshotPath.c_str());
+				ImGui::PopStyleColor();
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+					ImGui::SetTooltip("Click to open");
+				}
+				if (ImGui::IsItemClicked())
+				{
+					std::string url = "file://" + lastScreenshotPath;
+					SDL_OpenURL(url.c_str());
+				}
+			}
+
+			ImGui::End();
+		}
+
+		// Render Pipeline
+		pipeline.render(camera, totalTime, scenes[currentSceneIndex]);
+
+		// Screenshot capture
+		if (takeScreenshotRequested)
+		{
+			takeScreenshotRequested = false;
+			std::time_t t = std::time(nullptr);
+			char timeBuf[32];
+			struct tm tmBuf;
+#if defined(_WIN32)
+			localtime_s(&tmBuf, &t);
+#else
+			localtime_r(&t, &tmBuf);
+#endif
+			std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &tmBuf);
+			std::string filename = std::string("screenshot_") + timeBuf + ".png";
+			pipeline.saveScreenshot(filename);
+			lastScreenshotPath = std::filesystem::absolute(filename).string();
+		}
+
+		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59))
+		{
+			std::vector<unsigned char> pixels(windowWidth * windowHeight * 4);
+			glReadPixels(0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+			double sum = 0.0;
+			for (size_t i = 0; i < pixels.size(); i += 4)
+			{
+				sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / (3.0 * 255.0);
+			}
+			double avg = sum / (windowWidth * windowHeight);
+			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : 2);
+			std::cout << "Scene " << (scIdx + 1) << " (" << scenes[scIdx].name << ") Average Brightness: " << avg << std::endl;
+
+			std::string ppmName = "scene" + std::to_string(scIdx + 1) + ".ppm";
+			std::ofstream ofs(ppmName, std::ios::binary);
+			if (ofs)
+			{
+				ofs << "P6\n" << windowWidth << " " << windowHeight << "\n255\n";
+				for (int y = windowHeight - 1; y >= 0; --y)
+				{
+					for (int x = 0; x < windowWidth; ++x)
+					{
+						size_t idx = (y * windowWidth + x) * 4;
+						ofs.put(pixels[idx]);
+						ofs.put(pixels[idx + 1]);
+						ofs.put(pixels[idx + 2]);
+					}
+				}
+			}
+		}
+
+		// Render ImGui
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		SDL_GL_SwapWindow(window);
+	}
+
+	// Cleanup
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL3_Shutdown();
+	ImGui::DestroyContext();
+
+	SDL_GL_DestroyContext(glContext);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+
+	return 0;
+}

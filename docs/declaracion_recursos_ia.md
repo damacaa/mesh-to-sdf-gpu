@@ -31,6 +31,11 @@ Este documento mantiene un registro sistemático del uso de herramientas de Inte
 | 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `docs/damaca_PEC1.docx`, `docs/damaca_PEC1.pdf` | Traslado automatizado de los campos del borrador en Markdown a la plantilla oficial Word (`.docx`) y compilación a PDF para la entrega de la PEC 1. | Petición del estudiante de generar la copia de la plantilla oficial Word cumplimentada con el contenido de la PEC 1. |
 | 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `docs/scripts/build_pec1.py`, `docs/damaca_PEC1.docx`, `docs/damaca_PEC1.pdf` | Script de maquetación avanzada: ajuste tipográfico y espaciado de encabezados, normalización de tablas con `w:tblGrid`, eliminación de páginas huérfanas y actualización de índice. | Corrección de problemas de alineación, espaciado excesivo o comprimido, uso de negritas y páginas en blanco en la memoria. |
 | 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `docs/scripts/build_pec1.py`, `docs/damaca_PEC1.docx`, `docs/damaca_PEC1.pdf` | Integración y maquetación de imágenes con pies de figura centrados (`Figura X: ...`) y sincronización automática con la Lista de figuras. | Petición del estudiante de gestionar imágenes desde Markdown usando la primera línea de texto como pie de figura y regenerar los documentos oficiales. |
+| 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `src/`, `include/`, `shaders/`, `CMakeLists.txt` | Portabilidad y simplificación del prototipo 3D path tracer desde `weird-engine` a `tfm` con OpenGL 4.6 Core, SDL3 directo, eliminación de dependencias del motor previo e inyección procedural de escenas GLSL. | Instrucciones del estudiante para aislar el núcleo del trazador de caminos, modernizar a OpenGL 4.6 Core, emplear SDL3 directamente, estructurar escenas por cadenas GLSL (Cornell Box, primitivas, híbrido) y preservar la combinación con mallas GBuffer. |
+| 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `include/renderer/`, `src/renderer/`, `shaders/` | Diagnóstico y resolución de pantalla negra: corrección de semántica de movimiento (*move semantics*) en `Framebuffer`, `Shader` y `Texture` para evitar destrucción prematura de objetos OpenGL; corrección de signos en planos SDF de la caja de Cornell; eliminación del bucle de retroalimentación de textura de profundidad en FBOs de acumulación; y corrección del orden de devanado (CCW) del cuadrilátero a pantalla completa. | Diagnóstico del fallo de pantalla negra reportado por el estudiante, trazado de errores de OpenGL (1281, 1282) y verificación de renderizado en las tres escenas de prueba. |
+| 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `include/renderer/Scenes.h`, `src/renderer/PathTracerPipeline.cpp` | Verificación del paso de luces a los shaders (`u_numLights`, `u_lights`) y configuración de la luz direccional de intensidad 0 en la caja de Cornell para gobernar la modulación del cielo según la lógica de `weird-engine`. | Comprobación y respuesta a la consulta del estudiante sobre la transmisión de luces y el control del color del cielo mediante la primera luz en el shader. |
+| 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `include/renderer/`, `src/renderer/`, `src/main.cpp` | Implementación del botón de captura de pantalla (*Take Screenshot*) y exportación a disco mediante `stb_image_write`: guardado de texturas a PNG, enlace interactivo con tooltip en ImGui y apertura mediante `SDL_OpenURL`. | Petición del estudiante de copiar el botón y sistema de captura de pantalla desde `weird-engine`. |
+| 11/10/2026 | Antigravity (Gemini 3.8 Flash) | `include/renderer/Scenes.h` | Ajuste de escena 3 (*Hybrid Mesh + SDF*): material de Suzanne a mate completo (`metallic = 0.0`, `roughness = 1.0`), elevación vertical del modelo (`y = 1.65`) y reducción de la altura del pedestal cilíndrico (`y = 0.25`, altura `0.25`). | Petición del estudiante de cambiar el material del mono a mate y ajustar las alturas relativas del mono y la base. |
 
 ---
 
@@ -43,7 +48,10 @@ Este documento mantiene un registro sistemático del uso de herramientas de Inte
 | **OpenGL 4.6** | Especificación Khronos Core | Estándar abierto | API gráfica y ejecución de *compute shaders*. |
 | **SDL3** | https://github.com/libsdl-org/SDL | Zlib | Creación de ventanas, contexto OpenGL y eventos. |
 | **GLM** | https://github.com/g-truc/glm | Happy Bunny / MIT | Matemáticas 3D y transformaciones matriciales. |
-| **Assimp** | https://github.com/assimp/assimp | BSD 3-Clause | Carga y parseo de mallas poligonales (OBJ/glTF). |
+| **GLAD** | Especificación Khronos Core 4.6 | MIT | Generador de enlaces para funciones OpenGL 4.6 Core. |
+| **nlohmann/json** | https://github.com/nlohmann/json | MIT | Deserialización de modelos glTF 2.0 y archivos JSON. |
+| **stb_image** | https://github.com/nothings/stb | Dominio Público / MIT | Carga de texturas e imágenes en memoria GPU. |
+| **hg_sdf** | https://mercury.sexy/hg_sdf | MIT / CC BY-NC 4.0 | Biblioteca GLSL de primitivas y operadores para funciones SDF. |
 | **Dear ImGui** | https://github.com/ocornut/imgui | MIT | Interfaz de depuración y conmutación de shaders. |
 
 ---
@@ -55,4 +63,5 @@ Este documento mantiene un registro sistemático del uso de herramientas de Inte
 | Recurso | Autor / Fuente | Licencia | Uso / Integración en el Proyecto |
 | :--- | :--- | :--- | :--- |
 | **Cornell Box** | C. Goral, K. Torrance et al. (Cornell CS) | Dominio Público / CC | Escena canónica de prueba para iluminación global. |
+| **Suzanne (Monkey)** | Blender Foundation | GPL / Dominio Público | Malla poligonal canónica para pruebas de rasterizado e integración con SDF. |
 | **Crytek Sponza** | Marko Dabrovic / Crytek / Morgan McGuire | CC BY 3.0 | Escena arquitectónica de prueba para oclusión y rendimiento. |

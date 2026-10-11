@@ -59,3 +59,7 @@ compile_commands.json
 # Operating System files
 .DS_Store
 Thumbs.db
+imgui.ini
+*.ppm
+screenshot_*.png
+test_*.png
