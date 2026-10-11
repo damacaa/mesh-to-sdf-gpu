@@ -23,7 +23,7 @@
 
 **Nombre del profesor responsable de la asignatura:** Joan Arnedo Moreno
 
-**Fecha de entrega:** 10/2026
+**Fecha de entrega:** 12/2026
 
 **Titulación o programa:** Máster Universitario en Diseño y Programación de Videojuegos
 
@@ -86,15 +86,16 @@ Se declara el uso de Antigravity / Gemini y OpenAI ChatGPT como apoyo para estru
 
 La revisión del contenido, la selección de los métodos y la validación de las implementaciones y los resultados serán responsabilidad del autor. Las respuestas de estas herramientas no sustituirán la consulta de las fuentes originales ni la comprobación experimental.
 
-El uso de estas herramientas se recogerá en el archivo `docs/declaracion_recursos_ia.md`, que se actualizará durante el desarrollo del trabajo.
-
 ---
 
 # 1. INTRODUCCIÓN
 
 ## 1.1. Contexto y justificación del trabajo
 
-La iluminación global en tiempo real plantea un compromiso entre calidad visual y coste de cálculo. Además de la luz que llega directamente desde una fuente hasta una superficie, considera las contribuciones indirectas producidas por las reflexiones sobre otras superficies de la escena, descritas por la ecuación de renderizado [1]. Estas interacciones permiten representar fenómenos como la transferencia de color entre objetos próximos, conocida como *color bleeding*.
+La iluminación global en tiempo real plantea un compromiso entre calidad visual y coste de cálculo. Además de la luz que llega directamente desde una fuente hasta una superficie, considera las contribuciones indirectas producidas por las reflexiones sobre otras superficies de la escena, descritas por la ecuación de renderizado [1]. Estas interacciones permiten representar fenómenos como la transferencia de color entre objetos próximos, conocida como *color bleeding* (Figura 1).
+
+![[screenshot_20261011_164754.bmp]]
+Ejemplo de iluminación global, la luz rebota en el suelo e ilumina la parte inferior de la esfera. La luz que rebota en las paredes, ilumina la esfera con el color de cada pared.
 
 En este contexto, los campos de distancia con signo ofrecen una representación de la geometría que puede utilizarse para realizar consultas espaciales durante el trazado de rayos por software. Su aplicación a sistemas de iluminación como Lumen, de Unreal Engine 5 [2], constituye una referencia para estudiar este enfoque. El presente trabajo se centrará en la generación de dichos campos y en una demostración acotada de su uso, sin intentar reproducir un sistema de iluminación de la complejidad de Lumen.
 
@@ -214,7 +215,7 @@ La planificación se elaborará a partir de una dedicación estimada de **20 hor
 
 La implementación principal se concentrará en el periodo correspondiente a la PEC 3. La documentación se mantendrá durante todas las fases, y la preparación del procedimiento de medición deberá quedar avanzada antes de comenzar la batería experimental final.
 
-La disponibilidad durante el periodo comprendido entre el 25 de diciembre y el 7 de enero se tendrá en cuenta al concretar la dedicación. Si resulta inferior a la prevista, se adelantarán las pruebas que ya puedan ejecutarse durante la PEC 3 y se ajustará el número de configuraciones experimentales, manteniendo una comparación suficiente entre los dos métodos.
+La disponibilidad durante el periodo final se tendrá en cuenta al concretar la dedicación. La entrega final de la PEC 4 se realizará el 23 de diciembre de 2026, concluyendo el trabajo antes del receso navideño. Si fuera necesario resolver incidencias durante la recta final, se ajustará el número de configuraciones experimentales secundarias, preservando la validez de la comparación principal entre los dos métodos.
 
 El seguimiento semanal permitirá contrastar el trabajo realizado con el previsto y justificar las modificaciones del calendario.
 
@@ -224,15 +225,15 @@ El seguimiento semanal permitirá contrastar el trabajo realizado con el previst
 
 Se completarán la ficha del trabajo y el capítulo 1 de la memoria, con la justificación, los objetivos, el impacto, la metodología y la planificación. También se organizarán el repositorio y la documentación inicial.
 
-**PEC 2 — 15/11/2026: estado del arte, especificación y arquitectura.**
+**PEC 2 — 08/11/2026: estado del arte, especificación y arquitectura.**
 
 Se redactará el capítulo 2 y se desarrollará el contenido inicial del capítulo 3: requisitos, escenas previstas y protocolo de evaluación. Se definirá la arquitectura del sistema, junto con las restricciones de las mallas y las estrategias de captura y signo. Se realizará una exploración técnica limitada de los supuestos críticos de la alternativa.
 
-**PEC 3 — 24/12/2026: implementación y resultados intermedios.**
+**PEC 3 — 29/11/2026: implementación y resultados intermedios.**
 
 Se adaptará el visor, se sustituirán las primitivas analíticas por texturas 3D y se implementarán los dos generadores. Se incorporarán la selección de campos y los modos de inspección prioritarios. La entrega incluirá comprobaciones iniciales, primeras mediciones y la actualización del capítulo 4.
 
-**PEC 4 — 22/01/2027: resultados, memoria final y defensa.**
+**PEC 4 — 23/12/2026: resultados, memoria final y defensa.**
 
 Se completarán las pruebas, el análisis del capítulo 5 y las conclusiones del capítulo 6. Se revisará el diseño documentado y se consolidará la memoria. La presentación y la grabación de la defensa se prepararán antes del margen final de contingencia.
 
@@ -242,27 +243,27 @@ La Tabla 1 recoge los periodos previstos para cada actividad. Los solapamientos 
 
 **Tabla 1. Cronograma del proyecto.**
 
-| Fase | Actividad | Inicio | Fin |
-|---|---|---|---|
-| PEC 1 | Definición del proyecto y ficha del trabajo | 01/10/2026 | 06/10/2026 |
-| PEC 1 | Redacción del capítulo 1 | 06/10/2026 | 11/10/2026 |
-| PEC 2 | Investigación y redacción del estado del arte | 12/10/2026 | 28/10/2026 |
-| PEC 2 | Especificación de requisitos y protocolo de evaluación | 26/10/2026 | 06/11/2026 |
-| PEC 2 | Diseño arquitectónico y exploración técnica preliminar | 02/11/2026 | 15/11/2026 |
-| PEC 3 | Adaptación del prototipo previo del visor | 16/11/2026 | 26/11/2026 |
-| PEC 3 | Transición a texturas 3D e integración del trazado para iluminación | 24/11/2026 | 05/12/2026 |
-| PEC 3 | Implementación y comprobación del generador base | 01/12/2026 | 12/12/2026 |
-| PEC 3 | Implementación del generador alternativo basado en rasterización y JFA | 08/12/2026 | 18/12/2026 |
-| PEC 3 | Integración, primeras mediciones y preparación de la entrega | 15/12/2026 | 24/12/2026 |
-| PEC 4 | Batería experimental final y recogida de datos | 25/12/2026 | 07/01/2027 |
-| PEC 4 | Análisis de resultados y discusión | 05/01/2027 | 14/01/2027 |
-| PEC 4 | Revisión del diseño, conclusiones y consolidación de la memoria | 10/01/2027 | 18/01/2027 |
-| PEC 4 | Preparación de la presentación y grabación de la defensa | 16/01/2027 | 19/01/2027 |
-| PEC 4 | Margen de contingencia y comprobación final de los entregables | 20/01/2027 | 21/01/2027 |
+| Fase  | Actividad                                                              | Inicio     | Fin        |
+| ----- | ---------------------------------------------------------------------- | ---------- | ---------- |
+| PEC 1 | Definición del proyecto y ficha del trabajo                            | 23/09/2026 | 06/10/2026 |
+| PEC 1 | Redacción del capítulo 1 y preparación de la entrega                   | 06/10/2026 | 11/10/2026 |
+| PEC 2 | Investigación y redacción del estado del arte                          | 12/10/2026 | 25/10/2026 |
+| PEC 2 | Especificación de requisitos y protocolo de evaluación                 | 23/10/2026 | 01/11/2026 |
+| PEC 2 | Diseño arquitectónico y exploración técnica preliminar                 | 30/10/2026 | 08/11/2026 |
+| PEC 3 | Adaptación del prototipo previo del visor                              | 09/11/2026 | 15/11/2026 |
+| PEC 3 | Transición a texturas 3D e integración del trazado para iluminación    | 13/11/2026 | 19/11/2026 |
+| PEC 3 | Implementación y comprobación del generador base                       | 16/11/2026 | 22/11/2026 |
+| PEC 3 | Implementación del generador alternativo basado en rasterización y JFA | 19/11/2026 | 25/11/2026 |
+| PEC 3 | Integración, primeras mediciones y preparación de la entrega           | 23/11/2026 | 29/11/2026 |
+| PEC 4 | Batería experimental final y recogida de datos                         | 30/11/2026 | 08/12/2026 |
+| PEC 4 | Análisis de resultados y discusión                                     | 07/12/2026 | 14/12/2026 |
+| PEC 4 | Revisión del diseño, conclusiones y consolidación de la memoria        | 12/12/2026 | 18/12/2026 |
+| PEC 4 | Preparación de la presentación y grabación de la defensa               | 17/12/2026 | 20/12/2026 |
+| PEC 4 | Margen de contingencia y comprobación final de los entregables         | 21/12/2026 | 23/12/2026 |
 
 *Fuente: elaboración propia.*
 
-La entrega final está prevista para el 22 de enero de 2027. El margen de contingencia no se considerará tiempo disponible para añadir funcionalidades nuevas, sino una reserva para resolver incidencias y corregir los entregables.
+La entrega final está prevista para el 23 de diciembre de 2026. El margen de contingencia no se considerará tiempo disponible para añadir funcionalidades nuevas, sino una reserva para resolver incidencias y corregir los entregables.
 
 ### Riesgos y medidas de mitigación
 
