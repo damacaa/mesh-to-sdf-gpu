@@ -20,6 +20,7 @@ compile_commands.json
 !.vscode/launch.json
 !.vscode/extensions.json
 .idea/
+.obsidian/
 *.sublime-project
 *.sublime-workspace
 .cache/
