@@ -1,0 +1,257 @@
+﻿
+
+Título del Trabajo Final
+
+
+Subtítulo (si hay) 
+
+
+	Nombre Estudiante
+
+Nombre del Programa
+Área del trabajo final
+
+Nombre Tutor/a de TF
+Nombre y apellidos
+Profesor/a responsable de la asignatura
+Nombre y apellidos
+
+Fecha Entrega 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-SinObraDerivada 3.0 España de Creative Commons
+
+Licencias alternativas 
+(elegir alguna de las siguientes y sustituir la de la página anterior si aplica)
+
+A) Creative Commons: 
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-SinObraDerivada 3.0 España de Creative Commons
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-CompartirIgual 3.0 España de Creative Commons
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial 3.0 España de Creative Commons
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-SinObraDerivada 3.0 España de Creative Commons
+
+
+Esta obra está sujeta a una licencia de Reconocimiento-CompartirIgual 3.0 España de Creative Commons
+
+
+Esta obra está sujeta a una licencia de Reconocimiento 3.0 España de Creative Commons
+
+B) GNU Free Documentation License (GNU FDL)
+
+Copyright ©   AÑO  TU-NOMBRE.
+
+Permission is granted to copy, distribute and/or modify this document under the terms of the GNU Free Documentation License, Version 1.3 or any later version published by the Free Software Foundation; with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts. 
+A copy of the license is included in the section entitled "GNU Free Documentation License".
+
+C) Copyright
+
+© (el autor/a)
+Reservados todos los derechos. Está prohibido la reproducción total o parcial de esta obra por cualquier medio o procedimiento, comprendidos la impresión, la reprografía, el microfilme, el tratamiento informático o cualquier otro sistema, así como la distribución de ejemplares mediante alquiler y préstamo, sin la autorización escrita del autor o de los límites que autorice la Ley de Propiedad Intelectual.
+		FICHA DEL TRABAJO FINAL
+
+Título del trabajo:	Que describa el trabajo
+Nombre del autor:	Nombre y dos apellidos
+Nombre del director/a:	Nombre y dos apellidos
+Nombre del PRA:	Nombre y dos apellidos
+Fecha de entrega (mm/aaaa):	MM/AAAA
+Titulación o programa:	Programa de estudios
+Área del Trabajo Final:	Area de TF
+Idioma del trabajo:	Catalán, castellano o inglés
+Palabras clave	Máximo 3 palabras clave, validadas por el tutor/a del TF
+Resumen del Trabajo
+Máximo 250 palabras, con la finalidad, contexto de aplicación, metodología, resultados y conclusiones del trabajo
+Abstract
+A maximum of 250 words, detailing the purpose, context of application, methodology, results and conclusions of the work
+
+Agradecimientos
+
+Si se considera oportuno, mencionar a las personas, empresas o instituciones que hayan contribuido en la realización de este proyecto.
+
+Declaración de uso de recursos de terceros
+
+En este apartado se debe declarar CLARAMENTE el uso de recursos de terceros en esta memoria: bibliotecas de software, recursos gráficos o sonoros, etc. En general, cualquier elemento del proyecto (software, partes de la memoria, vídeos, etc.) que no deba ser confundido como una contribución personal por parte del estudiante. No es necesario declarar en este apartado aquellos aspectos que se puedan resolver con el empleo adecuado de citas a lo largo de la memoria.
+
+Esta declaración debe incluir todos los usos de IA para la generación de cualquier parte del proyecto. Se debe indicar qué partes del proyecto se han generado de este modo, herramienta usada, y un resumen de “prompts” empleados.
+
+La omisión de elementos en esta declaración es susceptible de ser considerado plagio por parte del estudiante (ver más información AQUÍ)
+Índice
+
+Generad un índice de acuerdo a los subapartados finales de la memòria. 
+Lista de figuras
+
+Figura 1	1
+
+
+
+
+    1. Introducción
+
+Esta plantilla se concibe como una guía para el/la estudiante. Se puede adaptar a las necesidades de cada trabajo, siempre que el tutor/a del trabajo esté de acuerdo. Todas las figuras o tablas siempre se deben referenciar desde el texto (e.g. “Tal como muestra la Figura 1...”).
+
+
+
+Figura 1: Este es un ejemplo de figura.
+
+        1.1. Contexto y justificación del Trabajo
+
+Punto de partida del trabajo (¿Cuál es la necesidad a cubrir? ¿Por qué es un tema relevante? ¿Cómo se resuelve el problema de momento?) y aportación realizada (¿Qué resultado se quiere obtener?).
+
+Es importante tener en cuenta que el trabajo final debe ser comprensible para cualquier persona que conozca el área de conocimiento, pero no tiene por qué ser experta en el tema de lo que versa el trabajo.
+
+        1.2. Objetivos del Trabajo
+
+Listado de los objetivos del trabajo
+
+        1.3. Impacto en sostenibilidad, ético-social y de diversidad
+
+Esta sección debería identificar los impactos positivos y/o negativos del TF en según estos aspectos.
+
+        1.4. Enfoque y método seguido
+
+Mención a grandes rasgos de cuáles son las posibles estrategias para llevar a cabo el trabajo y cuál es la elegida (desarrollar un producto nuevo, adaptar un producto existente. . . ).
+
+Hay que incluir una valoración de por qué ésta es la estrategia más apropiada para conseguir los objetivos.
+
+        1.5. Planificación del Trabajo
+
+Descripción de los recursos necesarios para realizar el trabajo, las tareas a realizar y una planificación temporal de cada tarea mediante un diagrama de Gantt o similar. Esta planificación debería marcar cuáles son las metas parciales de cada una de las PEC.
+
+Identificación de los posibles riesgos que pueden hacer que esta planificación no se cumpla, y descripción de los planes de mitigación o alternativos en caso de que estos riesgos se conviertan en un problema.
+
+        1.6. Breve sumario de productos obtenidos
+
+No hay que entrar en detalle: la descripción detallada se hará al resto de capítulos. 
+
+        1.7. Breve descripción de los otros capítulos de la memoria
+
+Breve explicación de los contenidos de cada capítulo y su relación con el proyecto global. 
+
+
+    2. Estado del arte
+
+
+Estado del arte del tema en cuestión. Debería acabar mostrando por qué el trabajo es importante y aporta algo, y con las hipótesis del trabajo.
+
+    3. Materials y métodos
+
+En este capítulo, es necesario describir:
+
+    • Los aspectos más relevantes del diseño y desarrollo del trabajo.
+    • La metodología elegida para realizar este desarrollo, describiendo las alternativas posibles, las decisiones tomadas, y los criterios utilizados para tomar estas decisiones.
+    • Herramientas a utilizar.
+
+La estructuración de los apartados puede variar en función del tipo de trabajo.
+
+En caso de que proceda, se incluirá un apartado de “Valoración económica del trabajo”. Este apartado indicará los gastos asociados al desarrollo y mantenimiento del trabajo, así como los beneficios económicos obtenidos y un análisis final sobre la viabilidad del producto.
+
+    4. Diseño
+
+Este apartado incluye todos los aspectos necesarios para llevar a cabo el proyecto con éxito pero previos a la propia implementación. Por ejemplo, el análisis de requerimientos por parte de los usuarios (e.g. entrevistas, cuestionarios, trabajo de campo) o todos los aspectos arquitectónicos (e.g. diagramas de clases, módulos). 
+
+    5. Resultados
+
+El enfoque de este apartado puede variar en función del tipo de proyecto (más de desarrollo, teórico, o de investigación). En cualquier caso, es necesario describir el resultado final alcanzado a través de la realización del trabajo final. Estos resultados deben estar alineados con las herramientas y métodos y el diseño descritos anteriormente.
+
+Según el tipo de trabajo, se puede incluir una demostración o prueba de concepto, o resultados de pruebas (e.g. benchmarks, tests de usuarios) que demuestren su solidez.
+
+
+    6. Conclusiones y Trabajo futuro
+
+6.1. Conclusiones
+
+Este apartado debe incluir:
+
+Una descripción de las conclusiones del trabajo:
+    • Una vez obtenidos los resultados, ¿qué conclusiones se extrae?
+    • Estos resultados son los esperados? ¿O han sido sorprendentes? ¿Por qué?
+
+Una reflexión crítica sobre la consecución de los objetivos planteados inicialmente:
+    • ¿Hemos alcanzado todos los objetivos? Si la respuesta es negativa, ¿por qué?
+
+
+6.2. Seguimiento de la planificación
+
+Un análisis crítico del seguimiento de la planificación y metodología a lo largo del producto:
+    • ¿Se ha seguido la planificación?
+    • ¿La metodología prevista ha sido suficientemente adecuada?
+    • ¿Ha sido necesario introducir cambios para garantizar el éxito del trabajo? ¿Por qué?
+
+De los impactos previstos en 1.3, ético-sociales, de sostenibilidad y de diversidad, evalúe/mencione si se han mitigado (si eran negativos) o si se han conseguido (si eran positivos).
+
+Si han aparecido impactos no previstos en 1.3, evaluar/mencionar cómo se han mitigado (si eran negativos) o qué han aportado (si eran positivos).
+
+6.3. Líneas de futuro
+
+Las líneas de trabajo futuro que no han podido explorarse en este trabajo y han quedado pendientes.
+
+
+    7. Glosario
+
+Definición de los términos y acrónimos más relevantes utilizados en la Memoria. 
+
+    8. Bibliografía
+
+Lista numerada de las referencias bibliográficas utilizadas en la memoria. En cada lugar donde se utilice una referencia dentro del texto, debe indicarse citando el número de la referencia, por ejemplo: [7].
+ 
+Es muy importante incluir todas las referencias utilizadas y citarlas apropiadamente, es decir, incluyendo toda la información necesaria para identificar la referencia. La información mínima a incluir según el tipo de referencia es:
+ 
+• Libro: Autores, Título, Edición (en su caso) Editorial, Ciudad, Año.
+• Artículo de revista: Autores, Título, Nombre de la Revista, Número de Página inicial y final, Número de la revista / Volumen, Año.
+• Web: URL y fecha en la que se ha visitado.
+
+    9. Anexos
+
+Listado de apartados que son demasiado extensos para incluir en la memoria y tienen un carácter autocontenido (por ejemplo, manuales de usuario, manuales de instalación, etc.)
+ 
+Dependiendo del tipo de trabajo, es posible que no sea necesario añadir ningún anexo.
+

@@ -1,0 +1,83 @@
+Con el Trabajo Final (TF) se pretende que el estudiante demuestre que es capaz de utilizar las competencias adquiridas a lo largo de la titulación mediante la elaboración individual de un proyecto original. Un trabajo final es como un proyecto y, como tal, requiere una gestión. El proyecto incluye la realización y entrega final de, como mínimo:
+
+Un producto
+Una memoria
+Una presentación
+Para gestionar el TF, tendréis que aplicar una metodología de gestión de proyectos y, para realizar el producto, una metodología de producción (p.ej. waterfall, prototipado, etc.) que incluya a la vez diferentes técnicas (p.ej. mockups, tests de usuario, análisis de casos, etc.).
+
+La estrategia a seguir por la realización de las diferentes PEC a lo largo del semestre será la redacción incremental de la memoria desde el primer día de curso. En cada uno de los enunciados se pedirá que rellenéis, en un formato más borrador o definitivo según nos acerquemos a la entrega final, diferentes apartados de la memoria. Por tanto, el documento “entregable” siempre será la memoria, en diferentes estados de redacción. En este enunciado ya podéis encontrar la plantilla de trabajo, que a la vez le proporciona un guión de cuál deberá ser su contenido a final de semestre.
+
+NOTA: La figura del docente que supervisa su trabajo es "Tutor/a de TF" (por norma general en las universidades). Hay que vigilar utilizar correctamente esta nomenclatura en la memoria, en lugar de otras nomenclaturas habituales en el resto de asignaturas, como “consultor”, “colaborador docente”, “PDC”, etc.
+
+Competencias
+Todas aquellas referidas en el plan docente de la asignatura, tanto las transversales como las específicas.
+
+Objetivos
+Con la presente PEC se pretende que el estudiante alcance los siguientes objetivos:
+
+Determinar la temática de su futuro TF
+Describir de forma concisa en qué consistirá su TF
+Explicar de forma razonada la motivación y justificación del TF escogido
+Redactar documentos técnicos siguiendo los formalismos establecidos
+
+El primer paso será la definición del proyecto, que implícitamente incluye la definición del producto. En esta PEC el estudiante escogerá una temática, resumirá en qué consistirá su TF y justificará el porqué de su elección. Dentro de esta área de TF, la PEC 1 sirve para definir conceptualmente qué juego el estudiante quiere llevar a cabo, a través de la creación del documento de diseño del videojuego a desarrollar.
+
+Esta PEC se centra especialmente en la redacción de una primera versión, preliminar, de los siguientes apartados de la memoria:
+
+Ficha del Trabajo (Título, Palabras clave y Resumen)
+Un borrador del apartado 1 de la memoria que permita al tutor entender perfectamente cuál es la su propuesta, su motivación, y una planificación inicial.
+Para hacerlo, es obligatorio usar la plantilla de la memoria disponible en el aulaDownload disponible en el aula. A su vez, referirse a la rúbrica con los criterios de evaluación (véase apartado asociado de Recursos de Aprendizaje) para ver los aspectos concretos que deben considerarse de cara a esta PEC y las siguientes.
+
+En este caso, los ítems principales que se deben resolver son:
+
+Contexto y justificación del Trabajo
+Objetivos del Trabajo
+Impacto en sostenibilidad, ético-social y de diversidad
+Enfoque y método seguido
+Planificación del Trabajo
+Breve sumario de productos obtenidos
+Breve descripción de los otros capítulos de la memoria
+Dada la duración de la PEC 1, los puntos principales a resolver con todo detalle son los 1, 2, 4 y 5.  El resto, es necesario desarrollarlos también, pero por ahora se pueden considerar una propuesta o borrador. El objetivo es que vuestro tutor os pueda dar feedback en breve, para acabar de definir el proyecto y, con su ayuda, poder crear ya una versión definitiva de este apartado.
+
+Por el momento, en la PEC 1 no es necesario llevar a cabo ningún aspecto vinculado a la implementación del proyecto.
+
+Sobre la introducción
+Es importante que en la introducción se describa claramente, aunque de forma resumida, en qué consistirá el juego. No es necesario entrar al nivel de detalle de un Documento de Diseño de Juego (GDD, Game Design DocumentLinks to an external site.), ya que esto se trabajará en otros apartados más adelante, pero para la explicación de la mecánica del juego podéis describir cómo serían los primeros minutos del juego, o cómo sería un nivel completo. Si queréis os podéis inventar screenshots de cómo os gustaría que fuera visualmente o utilizar screenshots de juegos ya existentes.
+
+No se tendrá en cuenta el aspecto gráfico de vuestra propuesta. No se os está evaluando el diseño visual. Podéis usar screenshots e imágenes de Internet, incluyendo la referencia al original, para explicar sus ideas (ver apartado siguiente).
+
+Podéis describirlo con el nivel de detalle que queráis, aunque incluir un exceso de detalle no tiene porque hacer que el documento resultante tenga mayor calidad.
+
+Uso de citas
+En una sociedad de la información y el conocimiento como en la que vivimos, una competencia fundamental es la de ser críticos frente a lo que se encuentra, y sobre todo, en Internet. En la red podemos descubrir de todo, pero no todo vale.
+
+Es importante usar algún formato de citación bibliográfica estándar. En primer lugar, la bibliografía debe estar al final del documento. Asimismo, los recursos bibliográficos utilizados deben estar ordenados. En el mundo profesional, normalmente se ordena por orden alfabético según el apellido del primer autor (también llamado autor principal).
+
+Para citar un ítem bibliográfico dentro del texto, uno de los formatos más habituales es una adaptación del estilo de cita Vancouver (ver http://es.wikipedia.org/wiki/Estilo_VancouverLinks to an external site.). A cada ítem de la bibliografía se le asocia un número entre corchetes, i.e. [1]. Así en el apartado de bibliografía todos los ítems comienzan con [#] donde # es el número consecutivo correspondiente. Durante el texto, se utilizan variantes de citación como:
+
+[1]: citar sólo una fuente bibliográfica.
+[1,10,3]: por citar más de una fuente bibliográfica a la vez
+[1-5]: por citar los ítems 1, 2, 3, 4 y 5.
+[1-5,10]: por citar los ítems 1 , 2, 3 , 4 y 5, y 10.
+Para los trabajos finales no existe un formato concreto de citación, los estudiantes pueden elegir el que más les guste, mientras sea coherente y usado en la literatura (pero nunca inventado). Por defecto, se recomienda utilizar APA: (autor, año), y la bibliografía ordenada alfabéticamente y no por orden de aparición de las citas. Los estudiantes pueden obtener una cita en este formato fácilmente vía Google Scholar (opción “cite” debajo de cualquier resultado de una búsqueda).
+
+Criterios de valoración
+La entrega de esta PEC es obligatoria. Se dará especial importancia a la coherencia de los tres puntos en el resumen, y que se presente un roadmap realista que pueda llevarse a cabo a lo largo del semestre.
+
+Formato de entrega
+Hay que entregar un PDF con el formato: loginUOC_PEC1
+
+Este documento debe ser obligatoriamente la plantilla de la memoria (véase el apartado asociado de Recursos de Aprendizaje). Usar cualquier otro formato será penalizado.
+
+El documento debe cumplir los siguientes aspectos formales, de acuerdo con su futura transformación en la memoria final del trabajo:
+
+Debe estar escrito en un único idioma (catalán, castellano o inglés).
+Las páginas deben ser blancas y sus tamaños deben seguir el formato DIN A-4.
+La fuente debe ser Arial, Times New Roman o similar, y de tamaño 11 si la fuente es Arial, y 12 si es Times New Roman.
+El interlineado debe ser de entre 1,15 y 1,5.
+Es necesario justificar la alineación del texto.
+El estilo de escritura debe ser formal. Se debe evitar el uso de la primera persona del singular y del plural, utilizando en su lugar una forma impersonal.
+Todas las figuras y tablas deben estar debidamente numeradas.
+La bibliografía debe ser clara y concisa. Debe estar ordenada, bien por orden de aparición y cita a lo largo del texto, o bien alfabéticamente (en este caso, si se lista más de un recurso de un mismo autor, sus ítems se ordenarán cronológicamente, de más antiguo a más nueve).
+A lo largo del texto, todas las referencias a recursos bibliográficos deben seguir un mismo formato. P.ej.: números [1].
+Se debe evitar, en la medida de lo posible, el uso de pies de página.

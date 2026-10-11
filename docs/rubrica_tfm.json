@@ -1,0 +1,111 @@
+{
+  "rubrica_tfm": {
+    "descripcion": "Rúbrica de evaluación continua para Trabajo Final de Máster a través de 4 entregas parciales (PECs)",
+    "entregas": ["PEC1", "PEC2", "PEC3", "PEC4"],
+    "formula_nota_criterio": "Suma(Nota_PEC_i * Peso_PEC_i) / Suma(Pesos_PEC_i)",
+    "formula_nota_final": "Suma(Nota_Final_Criterio * Porcentaje_Peso_Criterio)",
+    "categorias": [
+      {
+        "nombre": "Actitud del/de la estudiante",
+        "peso_total_categoria": 0.15,
+        "criterios": [
+          {
+            "descripcion": "Grado de autonomía, creatividad, iniciativa, receptividad a la crítica, y buena comunicación con el tutor/a",
+            "pesos_pec": { "PEC1": 1, "PEC2": 1, "PEC3": 1, "PEC4": 3 },
+            "peso_nota_final": 0.15
+          }
+        ]
+      },
+      {
+        "nombre": "Aspectos metodológicos",
+        "peso_total_categoria": 0.00,
+        "nota": "Evaluación formativa / diagnóstica en PEC1",
+        "criterios": [
+          {
+            "descripcion": "Definición de unos objetivos claros, concretos, realistas y adecuados",
+            "pesos_pec": { "PEC1": 2, "PEC2": 0, "PEC3": 0, "PEC4": 0 },
+            "peso_nota_final": 0.00
+          },
+          {
+            "descripcion": "Definición de la metodología, planificación temporal y de recursos",
+            "pesos_pec": { "PEC1": 2, "PEC2": 0, "PEC3": 0, "PEC4": 0 },
+            "peso_nota_final": 0.00
+          }
+        ]
+      },
+      {
+        "nombre": "Especificación y diseño",
+        "peso_total_categoria": 0.15,
+        "criterios": [
+          {
+            "descripcion": "Estudio previo e identificación de los aspectos relevantes del problema y de su solución (e.g. estado del arte, estudio de mercado)",
+            "pesos_pec": { "PEC1": 1, "PEC2": 2, "PEC3": 0, "PEC4": 0 },
+            "peso_nota_final": 0.00
+          },
+          {
+            "descripcion": "Análisis de requerimientos",
+            "pesos_pec": { "PEC1": 2, "PEC2": 0, "PEC3": 0, "PEC4": 0 },
+            "peso_nota_final": 0.00
+          },
+          {
+            "descripcion": "Diseño adecuado de la propuesta",
+            "pesos_pec": { "PEC1": 1, "PEC2": 2, "PEC3": 2, "PEC4": 1 },
+            "peso_nota_final": 0.05
+          },
+          {
+            "descripcion": "Elección de herramientas, tecnologías y fuentes de información adecuadas para el desarrollo del trabajo",
+            "pesos_pec": { "PEC1": 1, "PEC2": 1, "PEC3": 1, "PEC4": 1 },
+            "peso_nota_final": 0.05
+          },
+          {
+            "descripcion": "Grado de análisis y tratamiento del impacto ético-social, de sostenibilidad y de diversidad del trabajo",
+            "pesos_pec": { "PEC1": 1, "PEC2": 0, "PEC3": 0, "PEC4": 1 },
+            "peso_nota_final": 0.05
+          }
+        ]
+      },
+      {
+        "nombre": "Ejecución e implementación del proyecto",
+        "peso_total_categoria": 0.50,
+        "criterios": [
+          {
+            "descripcion": "Seguimiento de la planificación y capacidad de adaptación",
+            "pesos_pec": { "PEC1": 0, "PEC2": 1, "PEC3": 1, "PEC4": 5 },
+            "peso_nota_final": 0.25
+          },
+          {
+            "descripcion": "Calidad de la contribución técnica y/o científica del proyecto. Calidad de la solución/producto en desarrollo/obtenido",
+            "pesos_pec": { "PEC1": 0, "PEC2": 2, "PEC3": 2, "PEC4": 3 },
+            "peso_nota_final": 0.15
+          },
+          {
+            "descripcion": "Grado de innovación de la solución presentada",
+            "pesos_pec": { "PEC1": 0, "PEC2": 1, "PEC3": 1, "PEC4": 1 },
+            "peso_nota_final": 0.05
+          },
+          {
+            "descripcion": "Conclusiones y discusión de los resultados",
+            "pesos_pec": { "PEC1": 0, "PEC2": 0, "PEC3": 1, "PEC4": 1 },
+            "peso_nota_final": 0.05
+          }
+        ]
+      },
+      {
+        "nombre": "Aspectos formales de la memoria",
+        "peso_total_categoria": 0.20,
+        "criterios": [
+          {
+            "descripcion": "Redacción adecuada, utilización flexible del lenguaje, y organización clara y correcta del contenido",
+            "pesos_pec": { "PEC1": 2, "PEC2": 2, "PEC3": 2, "PEC4": 2 },
+            "peso_nota_final": 0.10
+          },
+          {
+            "descripcion": "Fuentes de información y referencias bibliográficas",
+            "pesos_pec": { "PEC1": 1, "PEC2": 1, "PEC3": 1, "PEC4": 2 },
+            "peso_nota_final": 0.10
+          }
+        ]
+      }
+    ]
+  }
+}
