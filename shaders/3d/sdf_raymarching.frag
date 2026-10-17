@@ -308,23 +308,49 @@ vec3 getMaterial(vec3 p, int id)
 	return color;
 }
 
-float rayMarch(vec3 ro, vec3 rd)
+struct RayHit
 {
-	float hit;
+	float dist;
+	bool hit;
+};
+
+RayHit rayMarch(vec3 ro, vec3 rd)
+{
+	float hit = 1.0;
 	float traveled = u_near;
+	bool hasHit = false;
 
 	for (int i = 0; i < MAX_STEPS; i++)
 	{
 		vec3 p = ro + (traveled * rd);
 		hit = sceneSdf(p).x;
 
-		if (abs(hit) < RAYMARCH_EPSILON || traveled > u_far)
+		// Distance-adaptive precision: scale threshold with distance
+		float precis = max(RAYMARCH_EPSILON, traveled * 0.0005);
+
+		if (abs(hit) < precis)
+		{
+			hasHit = true;
+			break;
+		}
+
+		if (traveled > u_far)
 			break;
 
 		traveled += hit;
 	}
 
-	return traveled;
+	// Also treat rays that reached near the surface before running out of steps as hits
+	if (!hasHit && traveled <= u_far)
+	{
+		float fallbackPrecis = max(RAYMARCH_EPSILON, traveled * 0.002);
+		if (abs(hit) < fallbackPrecis)
+		{
+			hasHit = true;
+		}
+	}
+
+	return RayHit(traveled, hasHit && (traveled <= u_far));
 }
 
 vec3 getNormal(vec3 p)
@@ -342,10 +368,10 @@ vec3 getSkyColor(vec3 dir)
 	vec3 horizonColor = vec3(0.5, 0.6, 0.7);
 	vec3 groundColor = vec3(0.1, 0.1, 0.12);
 
-	vec3 sky = mix(horizonColor, zenithColor, pow(t, 0.4));
+	vec3 sky = mix(horizonColor, zenithColor, pow(t, 0.85));
 	if (dir.y < 0.0)
 	{
-		sky = mix(horizonColor, groundColor, pow(-dir.y, 0.5));
+		sky = mix(horizonColor, groundColor, pow(-dir.y, 0.85));
 	}
 
 	if (u_numLights > 0 && u_lights[0].type == 0)
@@ -357,6 +383,15 @@ vec3 getSkyColor(vec3 dir)
 	}
 
 	return sky;
+}
+
+vec3 getFogColor(vec3 dir)
+{
+	// Atmosphere fog color matches the horizon sky color in that azimuthal direction
+	vec2 horiz = dir.xz;
+	float len = length(horiz);
+	vec3 horizonDir = (len > 0.0001) ? vec3(horiz.x / len, 0.0, horiz.y / len) : vec3(0.0, 0.0, 1.0);
+	return getSkyColor(horizonDir);
 }
 
 vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout float seed)
@@ -436,8 +471,8 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 				attenuation *= smoothstep(0.80, 0.95, spotEffect);
 			}
 
-			float dLight = rayMarch(p + N * 0.01, L);
-			bool hitObstacle = (dLight < lightDist) && (sceneSdf(p + N * 0.01 + dLight * L).x < RAYMARCH_EPSILON * 5.0);
+			RayHit shadowHit = rayMarch(p + N * 0.01, L);
+			bool hitObstacle = shadowHit.hit && (shadowHit.dist < lightDist);
 
 			if (!hitObstacle)
 			{
@@ -478,23 +513,41 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		vec3 bounceDir = isSpecular ? specularDir : diffuseDir;
 		currentRd = bounceDir;
 
-		float d = rayMarch(p + N * 0.01, bounceDir);
+		RayHit bounceHit = rayMarch(p + N * 0.01, bounceDir);
+		float d = bounceHit.dist;
 
 		if (isSpecular)
 			throughput *= mix(vec3(1.0), currentAlbedo, currentF0);
 		else
 			throughput *= currentAlbedo;
 
-		bool bounceHitObstacle = (d < u_far) && (sceneSdf(p + N * 0.01 + d * bounceDir).x < RAYMARCH_EPSILON * 5.0);
+		bool bounceHitObstacle = bounceHit.hit && (d < u_far);
+
+		// Distance fog along the bounce ray
+		float bounceFogStart = u_far * 0.50;
+		float bounceFogEnd = u_far * 0.95;
+		float bounceFog = smoothstep(bounceFogStart, bounceFogEnd, d);
+		vec3 bounceFogColor = getFogColor(bounceDir);
+		float bounceFactor = isSpecular ? 1.0 : 0.5;
 
 		if (!bounceHitObstacle)
 		{
 			float skyIntensity = isSpecular ? 1.0 : 0.5;
-			finalColor += throughput * getSkyColor(bounceDir) * skyIntensity;
+			vec3 skyCol = (bounceDir.y < 0.0) ? bounceFogColor : getSkyColor(bounceDir);
+			finalColor += throughput * skyCol * skyIntensity;
 			break;
 		}
 		else
 		{
+			// Apply atmospheric distance fog to the reflection
+			finalColor += throughput * bounceFogColor * bounceFog * bounceFactor;
+			throughput *= (1.0 - bounceFog);
+
+			if (bounceFog >= 1.0)
+			{
+				break;
+			}
+
 			p = p + N * 0.01 + d * bounceDir;
 			vec3 preBounceScene = sceneSdf(p);
 			float bounceBlend = preBounceScene.z;
@@ -539,19 +592,28 @@ HitData render(in vec2 uv)
 	float meshDepthSample = texelFetch(t_depthTexture, pixelCoord, 0).r;
 	float meshDepthLinear = linearizeGBufferDepth(meshDepthSample);
 
-	float object = rayMarch(ro, rd);
-	bool sdfHit = (object < u_far) && (sceneSdf(ro + object * rd).x < RAYMARCH_EPSILON * 5.0);
+	RayHit sdfHit = rayMarch(ro, rd);
+	float object = sdfHit.dist;
+	bool sdfValid = sdfHit.hit && (object < u_far);
 
 	vec3 rdCam = normalize(vec3(uv, -u_fov));
-	float planarDepth = object * abs(rdCam.z);
-	float minDepth = sdfHit ? planarDepth : u_far;
+	float absCosAngle = max(abs(rdCam.z), 0.0001);
+	float planarDepth = object * absCosAngle;
+	float minDepth = sdfValid ? planarDepth : u_far;
 
 	float z_e = max(planarDepth, u_near);
 	float z_n = (u_far + u_near - (2.0 * u_near * u_far) / z_e) / (u_far - u_near);
-	float sdfDepthNDC = sdfHit ? ((z_n + 1.0) * 0.5) : 1.0;
+	float sdfDepthNDC = sdfValid ? ((z_n + 1.0) * 0.5) : 1.0;
 
 	bool meshValid = (meshDepthSample < 1.0 - 0.0001);
-	bool meshInFront = meshValid && (meshDepthLinear < minDepth);
+	bool meshInFront = meshValid && (!sdfValid || meshDepthLinear < minDepth);
+
+	// Atmospheric distance fog: keep foreground and midground clear, fade smoothly into horizon in the distance
+	float fogStart = u_far * 0.50;
+	float fogEnd = u_far * 0.95;
+
+	// Distant atmospheric horizon fog color
+	vec3 fogColor = getFogColor(rd);
 
 	uint state = floatBitsToUint(uv.x) ^ floatBitsToUint(uv.y) ^ uint(u_frameCounter);
 	pcg(state);
@@ -571,8 +633,10 @@ HitData render(in vec2 uv)
 
 		vec3 col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, seed);
 
-		float fog = smoothstep(u_far * 0.0, u_far, meshDepthLinear);
-		col = mix(col, getSkyColor(rd), fog);
+		// Fog at mesh depth (Euclidean distance along ray)
+		float meshEuclideanDist = meshDepthLinear / absCosAngle;
+		float fog = smoothstep(fogStart, fogEnd, meshEuclideanDist);
+		col = mix(col, fogColor, fog);
 
 		gl_FragDepth = meshDepthSample;
 
@@ -583,7 +647,7 @@ HitData render(in vec2 uv)
 		hit.linearDepth = meshDepthLinear;
 		hit.hit = true;
 	}
-	else if (sdfHit)
+	else if (sdfValid)
 	{
 		vec3 p = ro + object * rd;
 
@@ -599,8 +663,9 @@ HitData render(in vec2 uv)
 
 		vec3 col = pathTrace(p, rd, baseColor, materialId, norm, seed);
 
-		float fog = smoothstep(u_far * 0.0, u_far, minDepth);
-		col = mix(col, getSkyColor(rd), fog);
+		// Fog at SDF depth (Euclidean distance along ray)
+		float fog = smoothstep(fogStart, fogEnd, object);
+		col = mix(col, fogColor, fog);
 
 		gl_FragDepth = sdfDepthNDC;
 
@@ -613,9 +678,10 @@ HitData render(in vec2 uv)
 	}
 	else
 	{
-		gl_FragDepth = sdfDepthNDC;
+		gl_FragDepth = 1.0;
 
-		hit.color = getSkyColor(rd);
+		vec3 skyColor = (rd.y < 0.0) ? fogColor : getSkyColor(rd);
+		hit.color = skyColor;
 		hit.albedo = vec3(1.0);
 		hit.normal = -rd;
 		hit.worldPos = ro + rd * u_far;
@@ -625,7 +691,8 @@ HitData render(in vec2 uv)
 
 	if (isnan(hit.color.r) || isnan(hit.color.g) || isnan(hit.color.b) || isinf(hit.color.r) || isinf(hit.color.g) || isinf(hit.color.b))
 	{
-		hit.color = hit.hit ? hit.albedo * 0.15 : getSkyColor(rd);
+		vec3 fallbackSky = (rd.y < 0.0) ? fogColor : getSkyColor(rd);
+		hit.color = hit.hit ? hit.albedo * 0.15 : fallbackSky;
 	}
 
 	return hit;
