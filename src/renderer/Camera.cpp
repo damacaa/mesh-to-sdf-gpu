@@ -21,10 +21,15 @@ namespace renderer
 
 	void Camera::updateMatrix(int width, int height)
 	{
+		prevCameraMatrix = cameraMatrix;
 		float aspect = static_cast<float>(width) / static_cast<float>(height > 0 ? height : 1);
 		view = glm::lookAt(position, position + orientation, up);
 		projection = glm::perspective(glm::radians(fov), aspect, nearPlane, farPlane);
 		cameraMatrix = projection * view;
+		if (prevCameraMatrix == glm::mat4(1.0f))
+		{
+			prevCameraMatrix = cameraMatrix;
+		}
 	}
 
 	void Camera::processKeyboard(float moveForward, float moveRight, float moveUp, float deltaTime, float speed)

@@ -1,6 +1,9 @@
 #version 460 core
 
-layout(location = 0) out vec4 FragColor;
+layout(location = 0) out vec4 out_illumination;
+layout(location = 1) out vec4 out_normal;
+layout(location = 2) out vec4 out_worldPos;
+layout(location = 3) out vec4 out_albedo;
 
 in vec2 v_texCoord;
 
@@ -17,6 +20,8 @@ uniform sampler2D t_gbufferBackDepth;   // GBuffer back depth
 uniform int u_frameCounter;
 uniform int u_rayBounces;
 uniform float u_contrast;
+uniform int u_enableDenoising;
+uniform int u_demodulateAlbedo;
 
 // Camera
 uniform mat4 u_camMatrix;
@@ -139,7 +144,7 @@ vec3 cosineSampleHemisphere(vec3 N, inout float seed)
 	vec2 xi = hash2(seed);
 	float phi = 2.0 * PI * xi.x;
 	float cosTheta = sqrt(xi.y);
-	float sinTheta = sqrt(1.0 - xi.y);
+	float sinTheta = sqrt(max(1.0 - xi.y, 0.0));
 
 	vec3 H;
 	H.x = cos(phi) * sinTheta;
@@ -147,7 +152,9 @@ vec3 cosineSampleHemisphere(vec3 N, inout float seed)
 	H.z = cosTheta;
 
 	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-	vec3 tangent = normalize(cross(up, N));
+	vec3 tVec = cross(up, N);
+	float tLen = length(tVec);
+	vec3 tangent = tLen > 1e-4 ? tVec / tLen : vec3(1.0, 0.0, 0.0);
 	vec3 bitangent = cross(N, tangent);
 
 	return tangent * H.x + bitangent * H.y + N * H.z;
@@ -324,7 +331,8 @@ vec3 getNormal(vec3 p)
 {
 	vec2 e = vec2(NORMAL_EPSILON, 0.0);
 	vec3 n = vec3(sceneSdf(p).x) - vec3(sceneSdf(p - e.xyy).x, sceneSdf(p - e.yxy).x, sceneSdf(p - e.yyx).x);
-	return normalize(n);
+	float nLen = length(n);
+	return nLen > 1e-5 ? n / nLen : vec3(0.0, 1.0, 0.0);
 }
 
 vec3 getSkyColor(vec3 dir)
@@ -434,7 +442,9 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			if (!hitObstacle)
 			{
 				vec3 diffuse = currentAlbedo * max(dot(N, L), 0.0) * (1.0 - fresnel);
-				vec3 H = normalize(L - currentRd);
+				vec3 hVec = L - currentRd;
+				float hLen = length(hVec);
+				vec3 H = hLen > 1e-4 ? hVec / hLen : N;
 				float specPow = pow(max(dot(N, H), 0.0), specExponent);
 				vec3 specular = specMultiplier * specPow * fresnel;
 
@@ -456,8 +466,12 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		// Indirect bounce
 		vec3 diffuseDir = cosineSampleHemisphere(N, seed);
 		vec3 reflectDir = reflect(currentRd, N);
-		vec3 jitter = normalize(vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0);
-		vec3 specularDir = normalize(reflectDir + jitter * currentRoughness);
+		vec3 jVec = vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0;
+		float jLen = length(jVec);
+		vec3 jitter = jLen > 1e-4 ? jVec / jLen : vec3(0.0);
+		vec3 sVec = reflectDir + jitter * currentRoughness;
+		float sLen = length(sVec);
+		vec3 specularDir = sLen > 1e-4 ? sVec / sLen : reflectDir;
 		if (dot(specularDir, N) < 0.0)
 			specularDir = reflectDir;
 
@@ -504,55 +518,72 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 	return finalColor;
 }
 
-vec4 render(in vec2 uv)
+struct HitData
+{
+	vec3 color;
+	vec3 albedo;
+	vec3 normal;
+	vec3 worldPos;
+	float linearDepth;
+	bool hit;
+};
+
+HitData render(in vec2 uv)
 {
 	vec3 ro = -u_camMatrix[3].xyz;
 	ro = vec3(dot(u_camMatrix[0].xyz, ro), dot(u_camMatrix[1].xyz, ro), dot(u_camMatrix[2].xyz, ro));
 
 	vec3 rd = (vec4(normalize(vec3(uv, -u_fov)), 0.0) * u_camMatrix).xyz;
 
-	float meshDepthSample = texture(t_depthTexture, v_texCoord).r;
+	ivec2 pixelCoord = ivec2(gl_FragCoord.xy);
+	float meshDepthSample = texelFetch(t_depthTexture, pixelCoord, 0).r;
 	float meshDepthLinear = linearizeGBufferDepth(meshDepthSample);
 
 	float object = rayMarch(ro, rd);
+	bool sdfHit = (object < u_far) && (sceneSdf(ro + object * rd).x < RAYMARCH_EPSILON * 5.0);
 
 	vec3 rdCam = normalize(vec3(uv, -u_fov));
 	float planarDepth = object * abs(rdCam.z);
-	float minDepth = planarDepth;
+	float minDepth = sdfHit ? planarDepth : u_far;
 
-	float z_e = planarDepth;
+	float z_e = max(planarDepth, u_near);
 	float z_n = (u_far + u_near - (2.0 * u_near * u_far) / z_e) / (u_far - u_near);
-	float sdfDepthNDC = (z_n + 1.0) * 0.5;
+	float sdfDepthNDC = sdfHit ? ((z_n + 1.0) * 0.5) : 1.0;
 
 	bool meshValid = (meshDepthSample < 1.0 - 0.0001);
 	bool meshInFront = meshValid && (meshDepthLinear < minDepth);
-
-	vec3 col = getSkyColor(rd);
 
 	uint state = floatBitsToUint(uv.x) ^ floatBitsToUint(uv.y) ^ uint(u_frameCounter);
 	pcg(state);
 	float seed = uintBitsToFloat(state);
 
+	HitData hit;
+
 	if (meshInFront)
 	{
-		float _ar = u_resolution.x / u_resolution.y;
-		vec2 gbufferUV = vec2(uv.x / _ar, uv.y) * 0.5 + 0.5;
+		vec3 meshAlbedo = texelFetch(t_gbufferAlbedo, pixelCoord, 0).rgb;
+		vec3 meshWorldPos = texelFetch(t_gbufferWorldPos, pixelCoord, 0).rgb;
+		vec3 rawNorm = texelFetch(t_gbufferNormal, pixelCoord, 0).rgb;
+		vec3 meshNormal = length(rawNorm) > 0.001 ? normalize(rawNorm) : vec3(0.0, 1.0, 0.0);
 
-		vec3 meshAlbedo = texture(t_gbufferAlbedo, gbufferUV).rgb;
-		vec3 meshWorldPos = texture(t_gbufferWorldPos, gbufferUV).rgb;
-		vec3 meshNormal = normalize(texture(t_gbufferNormal, gbufferUV).rgb);
-
-		int materialId = texture(t_gbufferMaterial, gbufferUV).r;
+		int materialId = texelFetch(t_gbufferMaterial, pixelCoord, 0).r;
 		meshAlbedo *= getMaterial(meshWorldPos, materialId);
 
-		col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, seed);
+		vec3 col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, seed);
 
 		float fog = smoothstep(u_far * 0.0, u_far, meshDepthLinear);
 		col = mix(col, getSkyColor(rd), fog);
 
 		gl_FragDepth = meshDepthSample;
+
+		hit.color = col;
+		hit.albedo = meshAlbedo;
+		hit.normal = meshNormal;
+		hit.worldPos = meshWorldPos;
+		hit.linearDepth = meshDepthLinear;
+		hit.hit = true;
 	}
-	else if (minDepth < u_far)
+	else if (sdfHit)
 	{
 		vec3 p = ro + object * rd;
 
@@ -564,20 +595,40 @@ vec4 render(in vec2 uv)
 		vec3 sceneResult = sceneSdf(materialSamplePos);
 		int materialId = int(sceneResult.y);
 		vec3 baseColor = getMaterial(materialSamplePos, materialId);
+		vec3 norm = getNormal(p);
 
-		col = pathTrace(p, rd, baseColor, materialId, getNormal(p), seed);
+		vec3 col = pathTrace(p, rd, baseColor, materialId, norm, seed);
 
 		float fog = smoothstep(u_far * 0.0, u_far, minDepth);
 		col = mix(col, getSkyColor(rd), fog);
 
 		gl_FragDepth = sdfDepthNDC;
+
+		hit.color = col;
+		hit.albedo = baseColor;
+		hit.normal = norm;
+		hit.worldPos = p;
+		hit.linearDepth = minDepth;
+		hit.hit = true;
 	}
 	else
 	{
 		gl_FragDepth = sdfDepthNDC;
+
+		hit.color = getSkyColor(rd);
+		hit.albedo = vec3(1.0);
+		hit.normal = -rd;
+		hit.worldPos = ro + rd * u_far;
+		hit.linearDepth = u_far;
+		hit.hit = false;
 	}
 
-	return vec4(col, 1.0);
+	if (isnan(hit.color.r) || isnan(hit.color.g) || isnan(hit.color.b) || isinf(hit.color.r) || isinf(hit.color.g) || isinf(hit.color.b))
+	{
+		hit.color = hit.hit ? hit.albedo * 0.15 : getSkyColor(rd);
+	}
+
+	return hit;
 }
 
 float rand(vec2 co)
@@ -592,33 +643,51 @@ void main()
 	float aspectRatio = u_resolution.x / u_resolution.y;
 
 #ifdef ANTIALIASING
-	if (u_frameCounter > 0)
-	{
-		uv += (vec2(rand(uv + u_time), rand(uv + u_time * 1.5)) - 0.5) * 2.0 / u_resolution;
-	}
+	uv += (vec2(rand(uv + u_time), rand(uv + u_time * 1.5)) - 0.5) * 2.0 / u_resolution;
 #endif
 
 	uv.x *= aspectRatio;
 
-	vec4 data = render(uv);
-	vec3 col = data.xyz;
+	HitData hit = render(uv);
+	vec3 col = hit.color;
 
 	// Firefly suppression
 	float maxComp = max(col.r, max(col.g, col.b));
-	if (maxComp > 3.0)
+	if (maxComp > 4.0)
 	{
-		col *= 3.0 / maxComp;
+		col *= 4.0 / maxComp;
 	}
 
-	col = mix(vec3(0.5), col, u_contrast);
-	col = clamp(col, 0.0, 1.0);
-
-	if (u_frameCounter > 0)
+	if (u_enableDenoising == 0)
 	{
-		vec4 prevColor = texture(t_previousColor, screenUV);
-		float weight = max(1.0 / float(u_frameCounter + 1), 0.02);
-		col = mix(prevColor.xyz, col, weight);
+		// Legacy static accumulation mode
+		col = mix(vec3(0.5), col, u_contrast);
+		col = clamp(col, 0.0, 1.0);
+
+		if (u_frameCounter > 0)
+		{
+			vec4 prevColor = texture(t_previousColor, screenUV);
+			float weight = max(1.0 / float(u_frameCounter + 1), 0.02);
+			col = mix(prevColor.xyz, col, weight);
+		}
+
+		out_illumination = vec4(col, hit.linearDepth);
+		out_normal = vec4(hit.normal, hit.hit ? 1.0 : 0.0);
+		out_worldPos = vec4(hit.worldPos, 1.0);
+		out_albedo = vec4(hit.albedo, 1.0);
+		return;
 	}
 
-	FragColor = vec4(col, 1.0);
+	// Real-time SVGF mode: Demodulate illumination from albedo
+	vec3 illumination = col;
+	if (u_demodulateAlbedo == 1 && hit.hit)
+	{
+		vec3 safeAlbedo = max(hit.albedo, vec3(0.05));
+		illumination = col / safeAlbedo;
+	}
+
+	out_illumination = vec4(illumination, hit.linearDepth);
+	out_normal = vec4(hit.normal, hit.hit ? 1.0 : 0.0);
+	out_worldPos = vec4(hit.worldPos, 1.0);
+	out_albedo = vec4(hit.albedo, 1.0);
 }

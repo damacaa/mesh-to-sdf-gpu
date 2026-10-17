@@ -31,7 +31,7 @@ namespace renderer
 		{
 			SceneDefinition cornell;
 			cornell.name = "Cornell Box";
-			cornell.cameraPosition = glm::vec3(0.0f, 2.0f, 4.2f);
+			cornell.cameraPosition = glm::vec3(0.0f, 2.0f, 8.2f);
 			cornell.cameraYaw = -90.0f;
 			cornell.cameraPitch = 0.0f;
 			cornell.renderMonkeyMesh = false;
@@ -280,12 +280,12 @@ namespace renderer
 			hybrid.materials.resize(16);
 			// Mat 0: Checkered floor
 			hybrid.materials[0].name = "Tile Floor";
-			hybrid.materials[0].color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f);
-			hybrid.materials[0].secondaryColor = glm::vec4(0.2f, 0.2f, 0.25f, 1.0f);
-			hybrid.materials[0].pattern = MaterialPattern::Checkers;
+			hybrid.materials[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+			hybrid.materials[0].secondaryColor = glm::vec4(0.0f);
+			hybrid.materials[0].pattern = MaterialPattern::None;
 			hybrid.materials[0].patternScale = 1.0f;
-			hybrid.materials[0].roughness = 0.15f;
-			hybrid.materials[0].metallic = 0.5f;
+			hybrid.materials[0].roughness = 0.3f;
+			hybrid.materials[0].metallic = 0.2f;
 
 			// Mat 9: Matte Suzanne Monkey
 			hybrid.materials[9].name = "Matte Monkey";

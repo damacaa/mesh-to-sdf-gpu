@@ -14,6 +14,7 @@ namespace renderer
 		glm::vec3 right = glm::vec3(1.0f, 0.0f, 0.0f);
 
 		glm::mat4 cameraMatrix = glm::mat4(1.0f);
+		glm::mat4 prevCameraMatrix = glm::mat4(1.0f);
 		glm::mat4 projection = glm::mat4(1.0f);
 		glm::mat4 view = glm::mat4(1.0f);
 

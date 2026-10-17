@@ -26,6 +26,16 @@ namespace renderer
 			int rayBounces = 3;
 			float contrast = 1.15f;
 			bool enableAntialiasing = true;
+
+			// SVGF Denoising Parameters
+			bool enableDenoising = true;
+			int atrousIterations = 4;
+			float temporalAlpha = 0.15f;
+			float phiNormal = 32.0f;
+			float phiDepth = 1.0f;
+			float phiLuminance = 4.0f;
+			bool demodulateAlbedo = false;
+			int debugView = 0;
 		};
 
 		PathTracerPipeline(const Config& config, const std::string& shadersRoot, const std::string& assetsRoot);
@@ -37,6 +47,7 @@ namespace renderer
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene);
 		void saveScreenshot(const std::string& filename);
+		void debugPixel(int x, int y);
 
 		Config& getConfig() { return m_config; }
 		const Config& getConfig() const { return m_config; }
@@ -50,9 +61,11 @@ namespace renderer
 
 		Shader m_gbufferShader;
 		Shader m_sdfShader;
+		Shader m_temporalShader;
+		Shader m_atrousShader;
 		Shader m_resolveShader;
 
-		// GBuffer resources
+		// GBuffer resources for mesh rasterization
 		Texture m_gbufferAlbedo;
 		Texture m_gbufferWorldPos;
 		Texture m_gbufferNormal;
@@ -63,7 +76,29 @@ namespace renderer
 		Framebuffer m_gbufferFbo;
 		Framebuffer m_backDepthFbo;
 
-		// Double-buffered accumulation targets
+		// Primary 1-SPP Path Tracer MRT resources
+		Texture m_primaryIllum;
+		Texture m_primaryNormal;
+		Texture m_primaryWorldPos;
+		Texture m_primaryAlbedo;
+		Texture m_primaryDepth;
+		Framebuffer m_primaryFbo;
+
+		// SVGF Temporal Accumulation & Moments ping-pong resources
+		Texture m_temporalIllum[2];
+		Texture m_temporalMoments[2];
+		Texture m_temporalNormal[2];
+		Texture m_temporalWorldPos[2];
+		Framebuffer m_temporalFbo[2];
+		int m_temporalIdx = 0;
+
+		// SVGF Multi-Scale À-Trous Wavelet filter ping-pong resources
+		Texture m_atrousPingTexture;
+		Texture m_atrousPongTexture;
+		Framebuffer m_atrousPingFbo;
+		Framebuffer m_atrousPongFbo;
+
+		// Legacy double-buffered accumulation targets
 		Texture m_accumTexture[2];
 		Framebuffer m_accumFbo[2];
 		int m_accumIdx = 0;
@@ -77,6 +112,8 @@ namespace renderer
 
 		int m_frameCounter = 0;
 		glm::mat4 m_oldCameraView = glm::mat4(0.0f);
+		glm::mat4 m_prevCameraMatrix = glm::mat4(1.0f);
+		bool m_firstFrame = true;
 
 		void freeResources();
 	};

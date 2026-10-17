@@ -311,6 +311,28 @@ int main(int argc, char* argv[])
 				pipeline.resetAccumulation();
 			}
 
+			ImGui::SeparatorText("Real-Time Denoising (SVGF)");
+			ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising);
+
+			if (pipeline.getConfig().enableDenoising)
+			{
+				const char* debugViewNames[] = {
+					"Final Denoised",
+					"Raw 1-SPP Noisy",
+					"Denoised Irradiance",
+					"Estimated Variance",
+					"Surface Normals",
+					"Surface Albedo"
+				};
+				ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
+				ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5);
+				ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
+				ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
+				ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.1f, 5.0f, "%.2f");
+				ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
+				ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo);
+			}
+
 			ImGui::SeparatorText("Camera");
 			if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
 			{
