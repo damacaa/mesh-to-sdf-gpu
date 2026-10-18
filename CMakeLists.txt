@@ -45,12 +45,14 @@ target_link_libraries(imgui PRIVATE glad)
 set(SOURCES
     src/main.cpp
     src/renderer/Camera.cpp
+    src/renderer/ComputeShader.cpp
     src/renderer/Framebuffer.cpp
     src/renderer/FullscreenQuad.cpp
     src/renderer/Model.cpp
     src/renderer/PathTracerPipeline.cpp
     src/renderer/Shader.cpp
     src/renderer/Texture.cpp
+    src/renderer/Texture3D.cpp
 )
 
 add_executable(tfm_pathtracer ${SOURCES})

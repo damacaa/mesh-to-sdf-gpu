@@ -108,6 +108,12 @@ namespace renderer
 			cornell.materials[3].color = glm::vec4(1.0f, 0.98f, 0.9f, 1.0f);
 			cornell.materials[3].emission = 8.0f;
 
+			// Mat 14: 3D SDF Texture Sphere
+			cornell.materials[14].name = "3D SDF Sphere";
+			cornell.materials[14].color = glm::vec4(0.2f, 0.85f, 0.45f, 1.0f);
+			cornell.materials[14].roughness = 0.25f;
+			cornell.materials[14].metallic = 0.1f;
+
 			// Sun light: Directional light with intensity 0 disables sky illumination (matching weird-engine)
 			cornell.lights.push_back({
 				.type = 0, // Directional light
@@ -218,6 +224,12 @@ namespace renderer
 			primitives.materials[8].color = glm::vec4(0.65f, 0.65f, 0.68f, 1.0f);
 			primitives.materials[8].roughness = 0.6f;
 
+			// Mat 14: 3D SDF Texture Sphere
+			primitives.materials[14].name = "3D SDF Sphere";
+			primitives.materials[14].color = glm::vec4(0.2f, 0.85f, 0.45f, 1.0f);
+			primitives.materials[14].roughness = 0.25f;
+			primitives.materials[14].metallic = 0.1f;
+
 			// Directional sun light + point fill
 			primitives.lights.push_back({
 				.type = 0,
@@ -312,6 +324,12 @@ namespace renderer
 			hybrid.materials[13].name = "Back Wall";
 			hybrid.materials[13].color = glm::vec4(0.35f, 0.35f, 0.4f, 1.0f);
 			hybrid.materials[13].roughness = 0.7f;
+
+			// Mat 14: 3D SDF Texture Sphere
+			hybrid.materials[14].name = "3D SDF Sphere";
+			hybrid.materials[14].color = glm::vec4(0.2f, 0.85f, 0.45f, 1.0f);
+			hybrid.materials[14].roughness = 0.25f;
+			hybrid.materials[14].metallic = 0.1f;
 
 			// Point light above the monkey
 			hybrid.lights.push_back({

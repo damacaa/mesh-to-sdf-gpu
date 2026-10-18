@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "renderer/Camera.h"
+#include "renderer/ComputeShader.h"
 #include "renderer/Framebuffer.h"
 #include "renderer/FullscreenQuad.h"
 #include "renderer/Light.h"
@@ -12,6 +13,7 @@
 #include "renderer/Scenes.h"
 #include "renderer/Shader.h"
 #include "renderer/Texture.h"
+#include "renderer/Texture3D.h"
 
 namespace renderer
 {
@@ -36,6 +38,13 @@ namespace renderer
 			float phiLuminance = 4.0f;
 			bool demodulateAlbedo = false;
 			int debugView = 0;
+
+			// 3D SDF Texture Parameters
+			bool enableSdf3DTexture = true;
+			int sdfTextureResolution = 64;
+			float sdfTextureWorldSize = 2.0f;
+			glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+			int sdfTextureMaterialId = 14;
 		};
 
 		PathTracerPipeline(const Config& config, const std::string& shadersRoot, const std::string& assetsRoot);
@@ -44,6 +53,7 @@ namespace renderer
 		void resize(unsigned int width, unsigned int height);
 		void setScene(const SceneDefinition& scene);
 		void resetAccumulation();
+		void generateSdf3DTexture();
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene);
 		void saveScreenshot(const std::string& filename);
@@ -64,6 +74,10 @@ namespace renderer
 		Shader m_temporalShader;
 		Shader m_atrousShader;
 		Shader m_resolveShader;
+		ComputeShader m_sdfComputeShader;
+
+		// 3D SDF volume texture
+		Texture3D m_sdf3DTexture;
 
 		// GBuffer resources for mesh rasterization
 		Texture m_gbufferAlbedo;

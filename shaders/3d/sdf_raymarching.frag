@@ -15,6 +15,13 @@ uniform sampler2D t_gbufferWorldPos;    // GBuffer world position
 uniform sampler2D t_gbufferNormal;      // GBuffer world normal
 uniform isampler2D t_gbufferMaterial;   // GBuffer material index
 uniform sampler2D t_gbufferBackDepth;   // GBuffer back depth
+uniform sampler3D t_sdfTexture3D;       // 3D volumetric SDF texture
+
+// 3D SDF texture parameters
+uniform int u_enableSdf3DTexture;
+uniform float u_sdfTextureWorldSize;
+uniform vec3 u_sdfTextureOffset;
+uniform int u_sdfTextureMaterialId;
 
 // Path tracer settings
 uniform int u_frameCounter;
@@ -253,6 +260,26 @@ float meshSDF(vec3 p)
 // Injected shape helper functions or scene definitions
 #include "helper_functions"
 
+float sample3DTextureSdf(vec3 p)
+{
+	vec3 q = p - u_sdfTextureOffset;
+	vec3 boxHalf = vec3(u_sdfTextureWorldSize * 0.5);
+	vec3 dBox = abs(q) - boxHalf;
+	float distToBox = length(max(dBox, 0.0));
+
+	vec3 uvw = (q / u_sdfTextureWorldSize) + 0.5;
+	float texDist = texture(t_sdfTexture3D, clamp(uvw, 0.0, 1.0)).r;
+
+	if (all(greaterThanEqual(uvw, vec3(0.0))) && all(lessThanEqual(uvw, vec3(1.0))))
+	{
+		return texDist;
+	}
+	else
+	{
+		return distToBox + texDist;
+	}
+}
+
 vec3 sceneSdf(vec3 p)
 {
 	float minDist = u_far;
@@ -272,6 +299,16 @@ vec3 sceneSdf(vec3 p)
 		}
 	}
 #endif
+
+	if (u_enableSdf3DTexture == 1)
+	{
+		float texDist = sample3DTextureSdf(p);
+		if (texDist < minDist)
+		{
+			minDist = texDist;
+			finalMaterialId = u_sdfTextureMaterialId;
+		}
+	}
 
 	return vec3(minDist, max(float(finalMaterialId), 0.0), globalBlend);
 }
@@ -353,10 +390,28 @@ RayHit rayMarch(vec3 ro, vec3 rd)
 	return RayHit(traveled, hasHit && (traveled <= u_far));
 }
 
+vec3 get3DTextureNormal(vec3 p)
+{
+	float voxelSize = u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x);
+	vec3 e = vec3(voxelSize, 0.0, 0.0);
+	float dx = sample3DTextureSdf(p + e.xyz) - sample3DTextureSdf(p - e.xyz);
+	float dy = sample3DTextureSdf(p + e.yxz) - sample3DTextureSdf(p - e.yxz);
+	float dz = sample3DTextureSdf(p + e.yzx) - sample3DTextureSdf(p - e.yzx);
+	vec3 n = vec3(dx, dy, dz);
+	float nLen = length(n);
+	return nLen > 1e-5 ? n / nLen : vec3(0.0, 1.0, 0.0);
+}
+
 vec3 getNormal(vec3 p)
 {
+	vec3 scene = sceneSdf(p);
+	if (u_enableSdf3DTexture == 1 && int(scene.y) == u_sdfTextureMaterialId)
+	{
+		return get3DTextureNormal(p);
+	}
+
 	vec2 e = vec2(NORMAL_EPSILON, 0.0);
-	vec3 n = vec3(sceneSdf(p).x) - vec3(sceneSdf(p - e.xyy).x, sceneSdf(p - e.yxy).x, sceneSdf(p - e.yyx).x);
+	vec3 n = vec3(scene.x) - vec3(sceneSdf(p - e.xyy).x, sceneSdf(p - e.yxy).x, sceneSdf(p - e.yyx).x);
 	float nLen = length(n);
 	return nLen > 1e-5 ? n / nLen : vec3(0.0, 1.0, 0.0);
 }

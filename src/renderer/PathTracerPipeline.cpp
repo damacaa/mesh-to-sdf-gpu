@@ -16,6 +16,7 @@ namespace renderer
 		m_temporalShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_temporal.frag");
 		m_atrousShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_atrous.frag");
 		m_resolveShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/linear_to_srgb.frag");
+		m_sdfComputeShader = ComputeShader(shadersRoot + "/compute/generate_3d_sdf.comp");
 
 		if (m_config.enableAntialiasing)
 		{
@@ -29,11 +30,13 @@ namespace renderer
 			m_monkeyModel.loadGLTF(monkeyPath);
 		}
 
+		generateSdf3DTexture();
 		resize(m_config.renderWidth, m_config.renderHeight);
 	}
 
 	PathTracerPipeline::~PathTracerPipeline()
 	{
+		m_sdf3DTexture.dispose();
 		freeResources();
 	}
 
@@ -185,6 +188,28 @@ namespace renderer
 		m_firstFrame = true;
 	}
 
+	void PathTracerPipeline::generateSdf3DTexture()
+	{
+		int res = std::max(m_config.sdfTextureResolution, 8);
+		if (m_sdf3DTexture.id == 0 || m_sdf3DTexture.getWidth() != res || m_sdf3DTexture.getHeight() != res ||
+			m_sdf3DTexture.getDepth() != res)
+		{
+			m_sdf3DTexture.allocate(res, res, res, GL_R32F);
+		}
+
+		m_sdfComputeShader.use();
+		m_sdf3DTexture.bindImage(0, GL_WRITE_ONLY);
+
+		m_sdfComputeShader.setUniform("u_resolution", glm::ivec3(res, res, res));
+		m_sdfComputeShader.setUniform("u_worldSize", m_config.sdfTextureWorldSize);
+		m_sdfComputeShader.setUniform("u_sphereCenter", glm::vec3(0.0f));
+		m_sdfComputeShader.setUniform("u_sphereRadius", 0.5f); // 1.0 meter diameter sphere
+
+		GLuint groups = static_cast<GLuint>((res + 7) / 8);
+		m_sdfComputeShader.dispatch(groups, groups, groups);
+		m_sdfComputeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+	}
+
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene)
 	{
 		// Detect camera movement or shader recompile
@@ -299,6 +324,12 @@ namespace renderer
 		m_sdfShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
 		m_sdfShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
 
+		// 3D SDF Texture Parameters
+		m_sdfShader.setUniform("u_enableSdf3DTexture", m_config.enableSdf3DTexture ? 1 : 0);
+		m_sdfShader.setUniform("u_sdfTextureWorldSize", m_config.sdfTextureWorldSize);
+		m_sdfShader.setUniform("u_sdfTextureOffset", m_config.sdfTextureOffset);
+		m_sdfShader.setUniform("u_sdfTextureMaterialId", m_config.sdfTextureMaterialId);
+
 		// Materials
 		for (int i = 0; i < 16; ++i)
 		{
@@ -344,6 +375,9 @@ namespace renderer
 
 		m_sdfShader.setUniform("t_depthTexture", 1);
 		m_depthTexture.bind(1);
+
+		m_sdfShader.setUniform("t_sdfTexture3D", 2);
+		m_sdf3DTexture.bind(2);
 
 		m_sdfShader.setUniform("t_gbufferAlbedo", 3);
 		m_gbufferAlbedo.bind(3);

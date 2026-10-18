@@ -333,6 +333,50 @@ int main(int argc, char* argv[])
 				ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo);
 			}
 
+			ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
+			if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
+			{
+				pipeline.resetAccumulation();
+			}
+
+			if (pipeline.getConfig().enableSdf3DTexture)
+			{
+				bool needsRegen = false;
+
+				const char* resOptions[] = { "32 x 32 x 32", "64 x 64 x 64", "128 x 128 x 128", "256 x 256 x 256" };
+				int currentResIdx = 1;
+				if (pipeline.getConfig().sdfTextureResolution <= 32) currentResIdx = 0;
+				else if (pipeline.getConfig().sdfTextureResolution <= 64) currentResIdx = 1;
+				else if (pipeline.getConfig().sdfTextureResolution <= 128) currentResIdx = 2;
+				else currentResIdx = 3;
+
+				if (ImGui::Combo("Resolution", &currentResIdx, resOptions, IM_ARRAYSIZE(resOptions)))
+				{
+					int resolutions[] = { 32, 64, 128, 256 };
+					pipeline.getConfig().sdfTextureResolution = resolutions[currentResIdx];
+					needsRegen = true;
+				}
+
+				if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 10.0f, "%.2f"))
+				{
+					needsRegen = true;
+				}
+
+				if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
+				{
+					pipeline.resetAccumulation();
+				}
+
+				if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
+				{
+					pipeline.generateSdf3DTexture();
+					pipeline.resetAccumulation();
+				}
+
+				ImGui::TextDisabled("Sphere: 1.0m diameter at (0, 0.5, 0)");
+				ImGui::TextDisabled("Volume Center: (0, 0.5, 0)");
+			}
+
 			ImGui::SeparatorText("Camera");
 			if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
 			{
