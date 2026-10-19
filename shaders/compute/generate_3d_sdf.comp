@@ -6,8 +6,57 @@ layout(r32f, binding = 0) uniform writeonly image3D u_sdfTexture;
 
 uniform ivec3 u_resolution;
 uniform float u_worldSize;
-uniform vec3 u_sphereCenter;
-uniform float u_sphereRadius;
+uniform vec3 u_worldOffset;
+uniform int u_bakeMode; // 0 = Sphere, 1 = Scene 2 Primitives
+
+#include "hg_sdf.glsl"
+
+float scene2SDF(vec3 p)
+{
+	float minDist = 1e5;
+
+	// Ground plane
+	{
+		float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
+		minDist = min(minDist, d);
+	}
+	// Center torus
+	{
+		vec3 pt = p - vec3(0.0, 1.5, 0.0);
+		pR(pt.xy, 0.4);
+		float d = fTorus(pt, 0.35, 1.1);
+		minDist = min(minDist, d);
+	}
+	// Left sphere
+	{
+		float d = fSphere(p - vec3(-2.2, 1.0, -0.5), 1.0);
+		minDist = min(minDist, d);
+	}
+	// Right smooth union of box and sphere
+	{
+		vec3 pb = p - vec3(2.2, 1.0, -0.5);
+		float dBox = fBox(pb, vec3(0.7, 0.7, 0.7));
+		float dSph = fSphere(pb, 0.9);
+		float d = fOpUnionSoft(dBox, dSph, 0.3);
+		minDist = min(minDist, d);
+	}
+	// Floating center sphere
+	{
+		float d = fSphere(p - vec3(0.0, 1.5, 0.0), 0.45);
+		minDist = min(minDist, d);
+	}
+	// Background columns
+	{
+		vec3 pc1 = p - vec3(-3.5, 2.5, -3.5);
+		float d1 = fCylinder(pc1, 0.4, 2.5);
+		vec3 pc2 = p - vec3(3.5, 2.5, -3.5);
+		float d2 = fCylinder(pc2, 0.4, 2.5);
+		float d = min(d1, d2);
+		minDist = min(minDist, d);
+	}
+
+	return minDist;
+}
 
 void main()
 {
@@ -20,11 +69,20 @@ void main()
 	// Calculate normalized texture coordinate at voxel center [0.0, 1.0]
 	vec3 uvw = (vec3(voxelCoord) + 0.5) / vec3(u_resolution);
 
-	// Map [0.0, 1.0] to world-space position centered at origin
-	vec3 worldPos = (uvw - 0.5) * u_worldSize;
+	// Map [0.0, 1.0] to world-space position using worldSize and worldOffset
+	vec3 worldPos = (uvw - 0.5) * u_worldSize + u_worldOffset;
 
-	// Calculate Euclidean distance to sphere surface
-	float dist = length(worldPos - u_sphereCenter) - u_sphereRadius;
+	float dist = 0.0;
+	if (u_bakeMode == 0)
+	{
+		// 1.0m diameter sphere centered at u_worldOffset
+		dist = length(worldPos - u_worldOffset) - 0.5;
+	}
+	else if (u_bakeMode == 1)
+	{
+		// Scene 2 geometric primitives
+		dist = scene2SDF(worldPos);
+	}
 
 	imageStore(u_sdfTexture, voxelCoord, vec4(dist, 0.0, 0.0, 0.0));
 }

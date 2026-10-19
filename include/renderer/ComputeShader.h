@@ -45,6 +45,7 @@ namespace renderer
 
 		void compile(const std::string& source);
 		static std::string readFile(const std::filesystem::path& path);
+		static std::string resolveIncludes(const std::string& source, const std::filesystem::path& baseDir);
 		static void checkCompileErrors(GLuint shader, const std::string& type);
 	};
 } // namespace renderer

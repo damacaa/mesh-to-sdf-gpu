@@ -23,10 +23,12 @@ namespace renderer
 	ComputeShader::ComputeShader(const std::string& computePath)
 		: m_computePath(computePath)
 	{
-		std::string source = readFile(computePath);
-		if (!source.empty())
+		std::string rawSource = readFile(computePath);
+		if (!rawSource.empty())
 		{
-			compile(source);
+			std::filesystem::path baseDir = std::filesystem::path(computePath).parent_path();
+			std::string processedSource = resolveIncludes(rawSource, baseDir);
+			compile(processedSource);
 		}
 	}
 
@@ -85,6 +87,49 @@ namespace renderer
 	void ComputeShader::memoryBarrier(GLbitfield barriers) const
 	{
 		glMemoryBarrier(barriers);
+	}
+
+	std::string ComputeShader::resolveIncludes(const std::string& source, const std::filesystem::path& baseDir)
+	{
+		std::string result;
+		std::istringstream stream(source);
+		std::string line;
+
+		while (std::getline(stream, line))
+		{
+			size_t incPos = line.find("#include");
+			if (incPos != std::string::npos)
+			{
+				size_t firstQuote = line.find('"', incPos);
+				size_t secondQuote = line.find('"', firstQuote + 1);
+				if (firstQuote != std::string::npos && secondQuote != std::string::npos)
+				{
+					std::string incName = line.substr(firstQuote + 1, secondQuote - firstQuote - 1);
+					std::filesystem::path incPath = baseDir / incName;
+					if (!std::filesystem::exists(incPath))
+					{
+						incPath = baseDir.parent_path() / incName;
+					}
+					if (!std::filesystem::exists(incPath))
+					{
+						incPath = baseDir.parent_path() / "common" / incName;
+					}
+
+					if (std::filesystem::exists(incPath))
+					{
+						std::string incContent = readFile(incPath);
+						result += resolveIncludes(incContent, incPath.parent_path()) + "\n";
+						continue;
+					}
+					else
+					{
+						std::cerr << "ComputeShader include not found: " << incName << std::endl;
+					}
+				}
+			}
+			result += line + "\n";
+		}
+		return result;
 	}
 
 	void ComputeShader::compile(const std::string& source)

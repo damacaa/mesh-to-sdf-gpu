@@ -16,6 +16,7 @@ namespace renderer
 		m_temporalShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_temporal.frag");
 		m_atrousShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_atrous.frag");
 		m_resolveShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/linear_to_srgb.frag");
+		m_fxaaShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/fxaa.frag");
 		m_sdfComputeShader = ComputeShader(shadersRoot + "/compute/generate_3d_sdf.comp");
 
 		if (m_config.enableAntialiasing)
@@ -30,13 +31,18 @@ namespace renderer
 			m_monkeyModel.loadGLTF(monkeyPath);
 		}
 
-		generateSdf3DTexture();
+		auto predefinedScenes = getPredefinedScenes();
+		initSceneTextures(predefinedScenes);
 		resize(m_config.renderWidth, m_config.renderHeight);
 	}
 
 	PathTracerPipeline::~PathTracerPipeline()
 	{
-		m_sdf3DTexture.dispose();
+		for (auto& tex : m_scene3DTextures)
+		{
+			tex.dispose();
+		}
+		m_scene3DTextures.clear();
 		freeResources();
 	}
 
@@ -51,6 +57,7 @@ namespace renderer
 		m_atrousPongFbo.free();
 		m_accumFbo[0].free();
 		m_accumFbo[1].free();
+		m_resolvedFbo.free();
 		m_outputFbo.free();
 
 		m_gbufferAlbedo.dispose();
@@ -80,6 +87,7 @@ namespace renderer
 
 		m_accumTexture[0].dispose();
 		m_accumTexture[1].dispose();
+		m_resolvedTexture.dispose();
 		m_outputTexture.dispose();
 	}
 
@@ -165,7 +173,12 @@ namespace renderer
 		glClear(GL_COLOR_BUFFER_BIT);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		// 7. Output texture
+		// 7. Resolved intermediate sRGB target (before FXAA)
+		m_resolvedTexture = Texture(width, height, Texture::TextureType::LinearData);
+		m_resolvedFbo = Framebuffer();
+		m_resolvedFbo.attachColorTexture(m_resolvedTexture, 0);
+
+		// 8. Output texture
 		m_outputTexture = Texture(width, height, Texture::TextureType::LinearData);
 		m_outputFbo = Framebuffer();
 		m_outputFbo.attachColorTexture(m_outputTexture, 0);
@@ -176,38 +189,93 @@ namespace renderer
 		m_firstFrame = true;
 	}
 
-	void PathTracerPipeline::setScene(const SceneDefinition& scene)
+	void PathTracerPipeline::initSceneTextures(const std::vector<SceneDefinition>& scenes)
 	{
-		m_sdfShader.setFragmentIncludeCode("shapes", scene.glslShapesCode, true);
-		resetAccumulation();
+		for (auto& tex : m_scene3DTextures)
+		{
+			tex.dispose();
+		}
+		m_scene3DTextures.clear();
+		m_scene3DTextures.resize(scenes.size());
+
+		for (size_t i = 0; i < scenes.size(); ++i)
+		{
+			generateSdf3DTexture(static_cast<int>(i), scenes[i].sdfBakeMode, scenes[i].sdfTextureResolution,
+								scenes[i].sdfTextureWorldSize, scenes[i].sdfTextureOffset);
+		}
 	}
 
-	void PathTracerPipeline::resetAccumulation()
+	void PathTracerPipeline::setScene(const SceneDefinition& scene, int sceneIndex)
+	{
+		m_currentSceneIndex = sceneIndex;
+		m_config.enableSdf3DTexture = scene.enableSdf3DTexture;
+		m_config.sdfTextureResolution = scene.sdfTextureResolution;
+		m_config.sdfTextureWorldSize = scene.sdfTextureWorldSize;
+		m_config.sdfTextureOffset = scene.sdfTextureOffset;
+		m_config.sdfTextureMaterialId = scene.sdfTextureMaterialId;
+		m_config.sdfBakeMode = scene.sdfBakeMode;
+
+		if (m_currentSceneIndex >= static_cast<int>(m_scene3DTextures.size()))
+		{
+			m_scene3DTextures.resize(m_currentSceneIndex + 1);
+		}
+
+		if (m_scene3DTextures[m_currentSceneIndex].id == 0)
+		{
+			generateSdf3DTexture(m_currentSceneIndex, m_config.sdfBakeMode, m_config.sdfTextureResolution,
+								m_config.sdfTextureWorldSize, m_config.sdfTextureOffset);
+		}
+
+		m_sdfShader.setFragmentIncludeCode("shapes", scene.glslShapesCode, true);
+		resetAccumulation(true);
+	}
+
+	void PathTracerPipeline::resetAccumulation(bool resetTemporal)
 	{
 		m_frameCounter = 0;
-		m_firstFrame = true;
+		if (resetTemporal)
+		{
+			m_firstFrame = true;
+		}
 	}
 
-	void PathTracerPipeline::generateSdf3DTexture()
+	void PathTracerPipeline::generateSdf3DTexture(int sceneIndex, int bakeMode, int resolution, float worldSize, const glm::vec3& worldOffset)
 	{
-		int res = std::max(m_config.sdfTextureResolution, 8);
-		if (m_sdf3DTexture.id == 0 || m_sdf3DTexture.getWidth() != res || m_sdf3DTexture.getHeight() != res ||
-			m_sdf3DTexture.getDepth() != res)
+		if (sceneIndex < 0) return;
+		if (sceneIndex >= static_cast<int>(m_scene3DTextures.size()))
 		{
-			m_sdf3DTexture.allocate(res, res, res, GL_R32F);
+			m_scene3DTextures.resize(sceneIndex + 1);
+		}
+
+		int res = std::max(resolution, 8);
+		auto& tex = m_scene3DTextures[sceneIndex];
+		if (tex.id == 0 || tex.getWidth() != res || tex.getHeight() != res || tex.getDepth() != res)
+		{
+			tex.allocate(res, res, res, GL_R32F);
 		}
 
 		m_sdfComputeShader.use();
-		m_sdf3DTexture.bindImage(0, GL_WRITE_ONLY);
+		tex.bindImage(0, GL_WRITE_ONLY);
 
 		m_sdfComputeShader.setUniform("u_resolution", glm::ivec3(res, res, res));
-		m_sdfComputeShader.setUniform("u_worldSize", m_config.sdfTextureWorldSize);
-		m_sdfComputeShader.setUniform("u_sphereCenter", glm::vec3(0.0f));
-		m_sdfComputeShader.setUniform("u_sphereRadius", 0.5f); // 1.0 meter diameter sphere
+		m_sdfComputeShader.setUniform("u_worldSize", worldSize);
+		m_sdfComputeShader.setUniform("u_worldOffset", worldOffset);
+		m_sdfComputeShader.setUniform("u_bakeMode", bakeMode);
 
 		GLuint groups = static_cast<GLuint>((res + 7) / 8);
 		m_sdfComputeShader.dispatch(groups, groups, groups);
 		m_sdfComputeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+	}
+
+	void PathTracerPipeline::generateSdf3DTexture(int sceneIndex)
+	{
+		generateSdf3DTexture(sceneIndex, m_config.sdfBakeMode, m_config.sdfTextureResolution,
+							m_config.sdfTextureWorldSize, m_config.sdfTextureOffset);
+	}
+
+	void PathTracerPipeline::generateSdf3DTexture()
+	{
+		generateSdf3DTexture(m_currentSceneIndex);
 	}
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene)
@@ -285,118 +353,127 @@ namespace renderer
 		// -------------------------------------------------------------
 		// 2. Primary Path Tracing Pass
 		// -------------------------------------------------------------
-		int prevAccumIdx = m_accumIdx;
-		if (!m_config.enableDenoising)
+		bool shouldRaymarch = m_config.enableDenoising || (m_frameCounter < m_config.maxAccumulationFrames);
+
+		if (shouldRaymarch)
 		{
-			m_accumIdx = (m_accumIdx + 1) % 2;
-			m_accumFbo[m_accumIdx].bind();
-			const GLenum singleBuf[1] = { GL_COLOR_ATTACHMENT0 };
-			glDrawBuffers(1, singleBuf);
-			glReadBuffer(GL_COLOR_ATTACHMENT0);
-		}
-		else
-		{
-			m_primaryFbo.bind();
-			const GLenum primaryBuffers[4] = {
-				GL_COLOR_ATTACHMENT0,
-				GL_COLOR_ATTACHMENT1,
-				GL_COLOR_ATTACHMENT2,
-				GL_COLOR_ATTACHMENT3
-			};
-			glDrawBuffers(4, primaryBuffers);
-			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		}
-
-		m_sdfShader.use();
-
-		float shaderFov = 1.0f / std::tan(glm::radians(camera.fov) * 0.5f);
-		m_sdfShader.setUniform("u_camMatrix", camera.view);
-		m_sdfShader.setUniform("u_viewProjection", camera.cameraMatrix);
-		m_sdfShader.setUniform("u_fov", shaderFov);
-		m_sdfShader.setUniform("u_time", static_cast<float>(time));
-		m_sdfShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
-		m_sdfShader.setUniform("u_near", camera.nearPlane);
-		m_sdfShader.setUniform("u_far", camera.farPlane);
-		m_sdfShader.setUniform("u_frameCounter", m_frameCounter);
-		m_sdfShader.setUniform("u_rayBounces", m_config.rayBounces);
-		m_sdfShader.setUniform("u_contrast", m_config.contrast);
-		m_sdfShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
-		m_sdfShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
-
-		// 3D SDF Texture Parameters
-		m_sdfShader.setUniform("u_enableSdf3DTexture", m_config.enableSdf3DTexture ? 1 : 0);
-		m_sdfShader.setUniform("u_sdfTextureWorldSize", m_config.sdfTextureWorldSize);
-		m_sdfShader.setUniform("u_sdfTextureOffset", m_config.sdfTextureOffset);
-		m_sdfShader.setUniform("u_sdfTextureMaterialId", m_config.sdfTextureMaterialId);
-
-		// Materials
-		for (int i = 0; i < 16; ++i)
-		{
-			std::string prefix = "u_materials[" + std::to_string(i) + "].";
-			if (i < static_cast<int>(scene.materials.size()))
+			int prevAccumIdx = m_accumIdx;
+			if (!m_config.enableDenoising)
 			{
-				const auto& mat = scene.materials[i];
-				m_sdfShader.setUniform(prefix + "color", mat.color);
-				m_sdfShader.setUniform(prefix + "metallic", mat.metallic);
-				m_sdfShader.setUniform(prefix + "roughness", mat.roughness);
-				m_sdfShader.setUniform(prefix + "pattern", static_cast<int>(mat.pattern));
-				m_sdfShader.setUniform(prefix + "patternScale", mat.patternScale);
-				m_sdfShader.setUniform(prefix + "secondaryColor", mat.secondaryColor);
-				m_sdfShader.setUniform(prefix + "emission", mat.emission);
+				m_accumIdx = (m_accumIdx + 1) % 2;
+				m_accumFbo[m_accumIdx].bind();
+				const GLenum singleBuf[1] = { GL_COLOR_ATTACHMENT0 };
+				glDrawBuffers(1, singleBuf);
+				glReadBuffer(GL_COLOR_ATTACHMENT0);
 			}
 			else
 			{
-				m_sdfShader.setUniform(prefix + "color", glm::vec4(1.0f));
-				m_sdfShader.setUniform(prefix + "metallic", 0.0f);
-				m_sdfShader.setUniform(prefix + "roughness", 1.0f);
-				m_sdfShader.setUniform(prefix + "pattern", 0);
-				m_sdfShader.setUniform(prefix + "patternScale", 1.0f);
-				m_sdfShader.setUniform(prefix + "secondaryColor", glm::vec4(0.0f));
-				m_sdfShader.setUniform(prefix + "emission", 0.0f);
+				m_primaryFbo.bind();
+				const GLenum primaryBuffers[4] = {
+					GL_COLOR_ATTACHMENT0,
+					GL_COLOR_ATTACHMENT1,
+					GL_COLOR_ATTACHMENT2,
+					GL_COLOR_ATTACHMENT3
+				};
+				glDrawBuffers(4, primaryBuffers);
+				glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			}
+
+			m_sdfShader.use();
+
+			float shaderFov = 1.0f / std::tan(glm::radians(camera.fov) * 0.5f);
+			m_sdfShader.setUniform("u_camMatrix", camera.view);
+			m_sdfShader.setUniform("u_viewProjection", camera.cameraMatrix);
+			m_sdfShader.setUniform("u_fov", shaderFov);
+			m_sdfShader.setUniform("u_time", static_cast<float>(time));
+			m_sdfShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
+			m_sdfShader.setUniform("u_near", camera.nearPlane);
+			m_sdfShader.setUniform("u_far", camera.farPlane);
+			m_sdfShader.setUniform("u_frameCounter", m_frameCounter);
+			m_sdfShader.setUniform("u_rayBounces", m_config.rayBounces);
+			m_sdfShader.setUniform("u_contrast", m_config.contrast);
+			m_sdfShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
+			m_sdfShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
+			m_sdfShader.setUniform("u_enableMeshShadows", m_config.enableMeshShadows ? 1 : 0);
+
+			// 3D SDF Texture Parameters
+			m_sdfShader.setUniform("u_enableSdf3DTexture", m_config.enableSdf3DTexture ? 1 : 0);
+			m_sdfShader.setUniform("u_sdfTextureWorldSize", m_config.sdfTextureWorldSize);
+			m_sdfShader.setUniform("u_sdfTextureOffset", m_config.sdfTextureOffset);
+			m_sdfShader.setUniform("u_sdfTextureMaterialId", m_config.sdfTextureMaterialId);
+
+			// Materials
+			for (int i = 0; i < 16; ++i)
+			{
+				std::string prefix = "u_materials[" + std::to_string(i) + "].";
+				if (i < static_cast<int>(scene.materials.size()))
+				{
+					const auto& mat = scene.materials[i];
+					m_sdfShader.setUniform(prefix + "color", mat.color);
+					m_sdfShader.setUniform(prefix + "metallic", mat.metallic);
+					m_sdfShader.setUniform(prefix + "roughness", mat.roughness);
+					m_sdfShader.setUniform(prefix + "pattern", static_cast<int>(mat.pattern));
+					m_sdfShader.setUniform(prefix + "patternScale", mat.patternScale);
+					m_sdfShader.setUniform(prefix + "secondaryColor", mat.secondaryColor);
+					m_sdfShader.setUniform(prefix + "emission", mat.emission);
+				}
+				else
+				{
+					m_sdfShader.setUniform(prefix + "color", glm::vec4(1.0f));
+					m_sdfShader.setUniform(prefix + "metallic", 0.0f);
+					m_sdfShader.setUniform(prefix + "roughness", 1.0f);
+					m_sdfShader.setUniform(prefix + "pattern", 0);
+					m_sdfShader.setUniform(prefix + "patternScale", 1.0f);
+					m_sdfShader.setUniform(prefix + "secondaryColor", glm::vec4(0.0f));
+					m_sdfShader.setUniform(prefix + "emission", 0.0f);
+				}
+			}
+
+			// Lights
+			int numLights = std::min(static_cast<int>(scene.lights.size()), 8);
+			m_sdfShader.setUniform("u_numLights", numLights);
+			for (int i = 0; i < numLights; ++i)
+			{
+				std::string prefix = "u_lights[" + std::to_string(i) + "].";
+				m_sdfShader.setUniform(prefix + "position", scene.lights[i].position);
+				m_sdfShader.setUniform(prefix + "direction", scene.lights[i].direction);
+				m_sdfShader.setUniform(prefix + "color", scene.lights[i].color);
+				m_sdfShader.setUniform(prefix + "type", static_cast<int>(scene.lights[i].type));
+			}
+
+			// Bind G-buffer and accumulation textures
+			m_sdfShader.setUniform("t_previousColor", 0);
+			m_accumTexture[prevAccumIdx].bind(0);
+
+			m_sdfShader.setUniform("t_depthTexture", 1);
+			m_depthTexture.bind(1);
+
+			m_sdfShader.setUniform("t_sdfTexture3D", 2);
+			if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size()))
+			{
+				m_scene3DTextures[m_currentSceneIndex].bind(2);
+			}
+
+			m_sdfShader.setUniform("t_gbufferAlbedo", 3);
+			m_gbufferAlbedo.bind(3);
+
+			m_sdfShader.setUniform("t_gbufferWorldPos", 4);
+			m_gbufferWorldPos.bind(4);
+
+			m_sdfShader.setUniform("t_gbufferNormal", 5);
+			m_gbufferNormal.bind(5);
+
+			m_sdfShader.setUniform("t_gbufferMaterial", 6);
+			m_gbufferMaterial.bind(6);
+
+			m_sdfShader.setUniform("t_gbufferBackDepth", 7);
+			m_backDepthTexture.bind(7);
+
+			glDisable(GL_DEPTH_TEST);
+			m_quad.draw();
+			glEnable(GL_DEPTH_TEST);
 		}
-
-		// Lights
-		int numLights = std::min(static_cast<int>(scene.lights.size()), 8);
-		m_sdfShader.setUniform("u_numLights", numLights);
-		for (int i = 0; i < numLights; ++i)
-		{
-			std::string prefix = "u_lights[" + std::to_string(i) + "].";
-			m_sdfShader.setUniform(prefix + "position", scene.lights[i].position);
-			m_sdfShader.setUniform(prefix + "direction", scene.lights[i].direction);
-			m_sdfShader.setUniform(prefix + "color", scene.lights[i].color);
-			m_sdfShader.setUniform(prefix + "type", static_cast<int>(scene.lights[i].type));
-		}
-
-		// Bind G-buffer and accumulation textures
-		m_sdfShader.setUniform("t_previousColor", 0);
-		m_accumTexture[prevAccumIdx].bind(0);
-
-		m_sdfShader.setUniform("t_depthTexture", 1);
-		m_depthTexture.bind(1);
-
-		m_sdfShader.setUniform("t_sdfTexture3D", 2);
-		m_sdf3DTexture.bind(2);
-
-		m_sdfShader.setUniform("t_gbufferAlbedo", 3);
-		m_gbufferAlbedo.bind(3);
-
-		m_sdfShader.setUniform("t_gbufferWorldPos", 4);
-		m_gbufferWorldPos.bind(4);
-
-		m_sdfShader.setUniform("t_gbufferNormal", 5);
-		m_gbufferNormal.bind(5);
-
-		m_sdfShader.setUniform("t_gbufferMaterial", 6);
-		m_gbufferMaterial.bind(6);
-
-		m_sdfShader.setUniform("t_gbufferBackDepth", 7);
-		m_backDepthTexture.bind(7);
-
-		glDisable(GL_DEPTH_TEST);
-		m_quad.draw();
-		glEnable(GL_DEPTH_TEST);
 
 		// -------------------------------------------------------------
 		// 3. SVGF Denoising Pipeline
@@ -513,10 +590,10 @@ namespace renderer
 		// -------------------------------------------------------------
 		// 4. Resolve Pass (Modulation, Debug Views, sRGB Conversion)
 		// -------------------------------------------------------------
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		m_resolvedFbo.bind();
 		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
-		glDrawBuffer(GL_BACK);
-		glReadBuffer(GL_BACK);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
 
 		m_resolveShader.use();
 		m_resolveShader.setUniform("u_debugView", m_config.debugView);
@@ -557,15 +634,38 @@ namespace renderer
 		m_quad.draw();
 		glEnable(GL_DEPTH_TEST);
 
+		// -------------------------------------------------------------
+		// 5. Post-Processing Anti-Aliasing (FXAA) / Final Screen Blit
+		// -------------------------------------------------------------
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
+		glDrawBuffer(GL_BACK);
+		glReadBuffer(GL_BACK);
+
+		m_fxaaShader.use();
+		m_fxaaShader.setUniform("t_screen", 0);
+		m_resolvedTexture.bind(0);
+		m_fxaaShader.setUniform("u_enableFxaa", m_config.enableFxaa ? 1 : 0);
+		m_fxaaShader.setUniform("u_fxaaMode", m_config.fxaaMode);
+		m_fxaaShader.setUniform("u_edgeThreshold", m_config.fxaaThreshold);
+		m_fxaaShader.setUniform("u_texelSize", glm::vec2(1.0f / m_config.renderWidth, 1.0f / m_config.renderHeight));
+
+		glDisable(GL_DEPTH_TEST);
+		m_quad.draw();
+		glEnable(GL_DEPTH_TEST);
+
 		// Advance temporal state
 		m_temporalIdx = (m_temporalIdx + 1) % 2;
 		m_prevCameraMatrix = camera.cameraMatrix;
-		m_frameCounter++;
+		if (shouldRaymarch)
+		{
+			m_frameCounter++;
+		}
 	}
 
 	void PathTracerPipeline::saveScreenshot(const std::string& filename)
 	{
-		m_outputFbo.bind();
+		m_resolvedFbo.bind();
 		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -620,6 +720,24 @@ namespace renderer
 			m_resolveShader.setUniform("t_normal", 3);
 			m_primaryNormal.bind(3);
 		}
+
+		glDisable(GL_DEPTH_TEST);
+		m_quad.draw();
+		glEnable(GL_DEPTH_TEST);
+
+		// Post-process FXAA into m_outputFbo for file export
+		m_outputFbo.bind();
+		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		m_fxaaShader.use();
+		m_fxaaShader.setUniform("t_screen", 0);
+		m_resolvedTexture.bind(0);
+		m_fxaaShader.setUniform("u_enableFxaa", m_config.enableFxaa ? 1 : 0);
+		m_fxaaShader.setUniform("u_fxaaMode", m_config.fxaaMode);
+		m_fxaaShader.setUniform("u_edgeThreshold", m_config.fxaaThreshold);
+		m_fxaaShader.setUniform("u_texelSize", glm::vec2(1.0f / m_config.renderWidth, 1.0f / m_config.renderHeight));
 
 		glDisable(GL_DEPTH_TEST);
 		m_quad.draw();

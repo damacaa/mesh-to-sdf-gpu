@@ -29,6 +29,7 @@ uniform int u_rayBounces;
 uniform float u_contrast;
 uniform int u_enableDenoising;
 uniform int u_demodulateAlbedo;
+uniform int u_enableMeshShadows;
 
 // Camera
 uniform mat4 u_camMatrix;
@@ -290,6 +291,7 @@ vec3 sceneSdf(vec3 p)
 	#include "shapes"
 
 #ifdef MESH_SHADOW_SDF
+	if (u_enableMeshShadows == 1)
 	{
 		float mDist = meshSDF(p);
 		if (mDist < minDist)
@@ -670,7 +672,9 @@ HitData render(in vec2 uv)
 	// Distant atmospheric horizon fog color
 	vec3 fogColor = getFogColor(rd);
 
-	uint state = floatBitsToUint(uv.x) ^ floatBitsToUint(uv.y) ^ uint(u_frameCounter);
+	uint pixelIndex = uint(pixelCoord.x) + uint(pixelCoord.y) * uint(u_resolution.x);
+	uint temporalSeed = uint(u_frameCounter) ^ floatBitsToUint(u_time);
+	uint state = pixelIndex ^ (temporalSeed * 747796405u + 2891336453u);
 	pcg(state);
 	float seed = uintBitsToFloat(state);
 
@@ -765,7 +769,11 @@ void main()
 	float aspectRatio = u_resolution.x / u_resolution.y;
 
 #ifdef ANTIALIASING
-	uv += (vec2(rand(uv + u_time), rand(uv + u_time * 1.5)) - 0.5) * 2.0 / u_resolution;
+	// Only apply subpixel camera jitter during offline accumulation; keep primary rays centered for SVGF
+	if (u_enableDenoising == 0)
+	{
+		uv += (vec2(rand(uv + u_time), rand(uv + u_time * 1.5)) - 0.5) * 2.0 / u_resolution;
+	}
 #endif
 
 	uv.x *= aspectRatio;
@@ -789,7 +797,7 @@ void main()
 		if (u_frameCounter > 0)
 		{
 			vec4 prevColor = texture(t_previousColor, screenUV);
-			float weight = max(1.0 / float(u_frameCounter + 1), 0.02);
+			float weight = 1.0 / float(u_frameCounter + 1);
 			col = mix(prevColor.xyz, col, weight);
 		}
 

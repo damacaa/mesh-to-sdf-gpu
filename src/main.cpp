@@ -4,7 +4,9 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl3.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -109,7 +111,25 @@ int main(int argc, char* argv[])
 	config.contrast = 1.15f;
 
 	renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
-	pipeline.setScene(scenes[currentSceneIndex]);
+	pipeline.setScene(scenes[currentSceneIndex], currentSceneIndex);
+
+	auto switchScene = [&](int newIndex) {
+		if (newIndex >= 0 && newIndex < static_cast<int>(scenes.size()) && newIndex != currentSceneIndex)
+		{
+			scenes[currentSceneIndex].enableSdf3DTexture = pipeline.getConfig().enableSdf3DTexture;
+			scenes[currentSceneIndex].sdfTextureResolution = pipeline.getConfig().sdfTextureResolution;
+			scenes[currentSceneIndex].sdfTextureWorldSize = pipeline.getConfig().sdfTextureWorldSize;
+			scenes[currentSceneIndex].sdfTextureOffset = pipeline.getConfig().sdfTextureOffset;
+			scenes[currentSceneIndex].sdfBakeMode = pipeline.getConfig().sdfBakeMode;
+
+			currentSceneIndex = newIndex;
+			pipeline.setScene(scenes[currentSceneIndex], currentSceneIndex);
+			camera.position = scenes[currentSceneIndex].cameraPosition;
+			camera.yaw = scenes[currentSceneIndex].cameraYaw;
+			camera.pitch = scenes[currentSceneIndex].cameraPitch;
+			camera.updateVectors();
+		}
+	};
 
 	bool isTestMode = (argc > 1 && std::string(argv[1]) == "--test");
 	int testFrames = 0;
@@ -135,23 +155,17 @@ int main(int argc, char* argv[])
 			testFrames++;
 			if (testFrames == 20)
 			{
-				currentSceneIndex = 1;
-				pipeline.setScene(scenes[currentSceneIndex]);
-				camera.position = scenes[currentSceneIndex].cameraPosition;
-				camera.yaw = scenes[currentSceneIndex].cameraYaw;
-				camera.pitch = scenes[currentSceneIndex].cameraPitch;
-				camera.updateVectors();
+				switchScene(1);
 			}
 			else if (testFrames == 40)
 			{
-				currentSceneIndex = 2;
-				pipeline.setScene(scenes[currentSceneIndex]);
-				camera.position = scenes[currentSceneIndex].cameraPosition;
-				camera.yaw = scenes[currentSceneIndex].cameraYaw;
-				camera.pitch = scenes[currentSceneIndex].cameraPitch;
-				camera.updateVectors();
+				switchScene(2);
 			}
-			else if (testFrames >= 60)
+			else if (testFrames == 60)
+			{
+				switchScene(3);
+			}
+			else if (testFrames >= 80)
 			{
 				std::cout << "All scenes rendered successfully without errors." << std::endl;
 				running = false;
@@ -177,15 +191,11 @@ int main(int argc, char* argv[])
 						if (event.key.scancode == SDL_SCANCODE_1) targetScene = 0;
 						else if (event.key.scancode == SDL_SCANCODE_2) targetScene = 1;
 						else if (event.key.scancode == SDL_SCANCODE_3) targetScene = 2;
+						else if (event.key.scancode == SDL_SCANCODE_4) targetScene = 3;
 
-						if (targetScene >= 0 && targetScene < static_cast<int>(scenes.size()) && targetScene != currentSceneIndex)
+						if (targetScene >= 0)
 						{
-							currentSceneIndex = targetScene;
-							pipeline.setScene(scenes[currentSceneIndex]);
-							camera.position = scenes[currentSceneIndex].cameraPosition;
-							camera.yaw = scenes[currentSceneIndex].cameraYaw;
-							camera.pitch = scenes[currentSceneIndex].cameraPitch;
-							camera.updateVectors();
+							switchScene(targetScene);
 						}
 					}
 					break;
@@ -269,127 +279,25 @@ int main(int argc, char* argv[])
 
 		// Debug Settings Window
 		{
-			ImGui::Begin("Path Tracer Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 600.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSizeConstraints(ImVec2(340.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
+			ImGui::Begin("Path Tracer Controls", nullptr);
 
 			ImGui::Text("FPS: %.1f (%.2f ms)", io.Framerate, 1000.0f / (io.Framerate > 0.0f ? io.Framerate : 1.0f));
 
-			int currentFrames = pipeline.getFrameCounter();
-			int maxFrames = pipeline.getConfig().maxAccumulationFrames;
-			float progress = static_cast<float>(std::min(currentFrames, maxFrames)) / static_cast<float>(maxFrames);
+			static float fpsHistory[120] = { 0.0f };
+			static int fpsOffset = 0;
+			fpsHistory[fpsOffset] = io.Framerate;
+			fpsOffset = (fpsOffset + 1) % IM_ARRAYSIZE(fpsHistory);
 
-			ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
-			ImGui::SameLine();
-			ImGui::Text("%d / %d", currentFrames, maxFrames);
-
-			ImGui::SeparatorText("Scene Selection");
-			const char* sceneNames[] = {
-				"1. Cornell Box",
-				"2. Primitives Showcase",
-				"3. Hybrid Mesh + SDF"
-			};
-			if (ImGui::Combo("Scene", &currentSceneIndex, sceneNames, IM_ARRAYSIZE(sceneNames)))
+			float maxFpsVal = 60.0f;
+			for (int n = 0; n < IM_ARRAYSIZE(fpsHistory); n++)
 			{
-				pipeline.setScene(scenes[currentSceneIndex]);
-				camera.position = scenes[currentSceneIndex].cameraPosition;
-				camera.yaw = scenes[currentSceneIndex].cameraYaw;
-				camera.pitch = scenes[currentSceneIndex].cameraPitch;
-				camera.updateVectors();
+				if (fpsHistory[n] > maxFpsVal) maxFpsVal = fpsHistory[n];
 			}
-			ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3");
+			maxFpsVal = std::ceil(maxFpsVal / 30.0f) * 30.0f;
 
-			ImGui::SeparatorText("Path Tracer Settings");
-			if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
-			{
-				pipeline.resetAccumulation();
-			}
-			if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
-			{
-				pipeline.resetAccumulation();
-			}
-			if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
-			{
-				pipeline.resetAccumulation();
-			}
-
-			ImGui::SeparatorText("Real-Time Denoising (SVGF)");
-			ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising);
-
-			if (pipeline.getConfig().enableDenoising)
-			{
-				const char* debugViewNames[] = {
-					"Final Denoised",
-					"Raw 1-SPP Noisy",
-					"Denoised Irradiance",
-					"Estimated Variance",
-					"Surface Normals",
-					"Surface Albedo"
-				};
-				ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
-				ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5);
-				ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
-				ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
-				ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.1f, 5.0f, "%.2f");
-				ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
-				ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo);
-			}
-
-			ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
-			if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
-			{
-				pipeline.resetAccumulation();
-			}
-
-			if (pipeline.getConfig().enableSdf3DTexture)
-			{
-				bool needsRegen = false;
-
-				const char* resOptions[] = { "32 x 32 x 32", "64 x 64 x 64", "128 x 128 x 128", "256 x 256 x 256" };
-				int currentResIdx = 1;
-				if (pipeline.getConfig().sdfTextureResolution <= 32) currentResIdx = 0;
-				else if (pipeline.getConfig().sdfTextureResolution <= 64) currentResIdx = 1;
-				else if (pipeline.getConfig().sdfTextureResolution <= 128) currentResIdx = 2;
-				else currentResIdx = 3;
-
-				if (ImGui::Combo("Resolution", &currentResIdx, resOptions, IM_ARRAYSIZE(resOptions)))
-				{
-					int resolutions[] = { 32, 64, 128, 256 };
-					pipeline.getConfig().sdfTextureResolution = resolutions[currentResIdx];
-					needsRegen = true;
-				}
-
-				if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 10.0f, "%.2f"))
-				{
-					needsRegen = true;
-				}
-
-				if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
-				{
-					pipeline.resetAccumulation();
-				}
-
-				if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
-				{
-					pipeline.generateSdf3DTexture();
-					pipeline.resetAccumulation();
-				}
-
-				ImGui::TextDisabled("Sphere: 1.0m diameter at (0, 0.5, 0)");
-				ImGui::TextDisabled("Volume Center: (0, 0.5, 0)");
-			}
-
-			ImGui::SeparatorText("Camera");
-			if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
-			{
-				pipeline.resetAccumulation();
-			}
-			ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
-			ImGui::Text("Hold Right Mouse Button to Look Around");
-			ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
-
-			if (ImGui::Button("Reset Accumulation"))
-			{
-				pipeline.resetAccumulation();
-			}
+			ImGui::PlotLines("##FPSGraph", fpsHistory, IM_ARRAYSIZE(fpsHistory), fpsOffset, nullptr, 0.0f, maxFpsVal, ImVec2(0.0f, 45.0f));
 
 			if (ImGui::Button("Take Screenshot"))
 			{
@@ -413,6 +321,168 @@ int main(int argc, char* argv[])
 					SDL_OpenURL(url.c_str());
 				}
 			}
+
+			ImGui::Separator();
+
+			if (ImGui::BeginChild("SettingsScrollArea", ImVec2(0.0f, 0.0f)))
+			{
+				if (ImGui::CollapsingHeader("Scene Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::SeparatorText("Scene Selection");
+					const char* sceneNames[] = {
+						"1. Cornell Box",
+						"2. Primitives Showcase",
+						"3. Hybrid Mesh + SDF",
+						"4. 3D Texture Only"
+					};
+					int selectedScene = currentSceneIndex;
+					if (ImGui::Combo("Scene", &selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
+					{
+						switchScene(selectedScene);
+					}
+					ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4");
+
+					ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
+					if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
+					{
+						pipeline.resetAccumulation();
+					}
+
+					if (pipeline.getConfig().enableSdf3DTexture)
+					{
+						bool needsRegen = false;
+
+						const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives" };
+						if (ImGui::Combo("Bake Mode", &pipeline.getConfig().sdfBakeMode, bakeModes, IM_ARRAYSIZE(bakeModes)))
+						{
+							needsRegen = true;
+						}
+
+						const char* resOptions[] = { "32 x 32 x 32", "64 x 64 x 64", "128 x 128 x 128", "256 x 256 x 256" };
+						int currentResIdx = 1;
+						if (pipeline.getConfig().sdfTextureResolution <= 32) currentResIdx = 0;
+						else if (pipeline.getConfig().sdfTextureResolution <= 64) currentResIdx = 1;
+						else if (pipeline.getConfig().sdfTextureResolution <= 128) currentResIdx = 2;
+						else currentResIdx = 3;
+
+						if (ImGui::Combo("Resolution", &currentResIdx, resOptions, IM_ARRAYSIZE(resOptions)))
+						{
+							int resolutions[] = { 32, 64, 128, 256 };
+							pipeline.getConfig().sdfTextureResolution = resolutions[currentResIdx];
+							needsRegen = true;
+						}
+
+						if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 25.0f, "%.2f"))
+						{
+							needsRegen = true;
+						}
+
+						if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
+						{
+							pipeline.resetAccumulation();
+						}
+
+						if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
+						{
+							pipeline.generateSdf3DTexture();
+							pipeline.resetAccumulation();
+						}
+
+						if (pipeline.getConfig().sdfBakeMode == 0)
+						{
+							ImGui::TextDisabled("Bake Shape: 1.0m diameter sphere");
+						}
+						else
+						{
+							ImGui::TextDisabled("Bake Shape: Scene 2 geometric primitives");
+						}
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::SeparatorText("Path Tracer Settings");
+					if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
+					{
+						pipeline.resetAccumulation();
+					}
+					if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
+					{
+						pipeline.resetAccumulation();
+					}
+					if (ImGui::Checkbox("Mesh Casts Shadows", &pipeline.getConfig().enableMeshShadows))
+					{
+						pipeline.resetAccumulation();
+					}
+
+					ImGui::SeparatorText("Denoising & Accumulation");
+					if (ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising))
+					{
+						pipeline.resetAccumulation(true);
+					}
+
+					if (pipeline.getConfig().enableDenoising)
+					{
+						const char* debugViewNames[] = {
+							"Final Denoised",
+							"Raw 1-SPP Noisy",
+							"Denoised Irradiance",
+							"Estimated Variance",
+							"Surface Normals",
+							"Surface Albedo"
+						};
+						ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
+						ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5);
+						ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
+						ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
+						ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.1f, 5.0f, "%.2f");
+						ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
+						ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo);
+					}
+					else
+					{
+						if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
+						{
+							pipeline.resetAccumulation();
+						}
+
+						int currentFrames = pipeline.getFrameCounter();
+						int maxFrames = pipeline.getConfig().maxAccumulationFrames;
+						float progress = static_cast<float>(std::min(currentFrames, maxFrames)) / static_cast<float>(maxFrames);
+
+						ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+						ImGui::SameLine();
+						ImGui::Text("%d / %d", currentFrames, maxFrames);
+
+						if (ImGui::Button("Reset Accumulation"))
+						{
+							pipeline.resetAccumulation(true);
+						}
+					}
+
+					ImGui::SeparatorText("Post-Processing Anti-Aliasing (FXAA)");
+					ImGui::Checkbox("Enable FXAA", &pipeline.getConfig().enableFxaa);
+					if (pipeline.getConfig().enableFxaa)
+					{
+						const char* fxaaModes[] = { "Standard FXAA (Multi-Tap)", "Derivative FXAA (dFdx / dFdy)" };
+						ImGui::Combo("FXAA Algorithm", &pipeline.getConfig().fxaaMode, fxaaModes, IM_ARRAYSIZE(fxaaModes));
+						if (pipeline.getConfig().fxaaMode == 1)
+						{
+							ImGui::SliderFloat("Derivative Threshold", &pipeline.getConfig().fxaaThreshold, 0.01f, 0.2f, "%.3f");
+						}
+					}
+
+					ImGui::SeparatorText("Camera");
+					if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
+					{
+						pipeline.resetAccumulation();
+					}
+					ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
+					ImGui::Text("Hold Right Mouse Button to Look Around");
+					ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
+				}
+			}
+			ImGui::EndChild();
 
 			ImGui::End();
 		}
@@ -438,7 +508,7 @@ int main(int argc, char* argv[])
 			lastScreenshotPath = std::filesystem::absolute(filename).string();
 		}
 
-		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59))
+		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59 || testFrames == 79))
 		{
 			std::vector<unsigned char> pixels(windowWidth * windowHeight * 4);
 			glReadPixels(0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
@@ -448,7 +518,7 @@ int main(int argc, char* argv[])
 				sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / (3.0 * 255.0);
 			}
 			double avg = sum / (windowWidth * windowHeight);
-			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : 2);
+			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : ((testFrames == 59) ? 2 : 3));
 			std::cout << "Scene " << (scIdx + 1) << " (" << scenes[scIdx].name << ") Average Brightness: " << avg << std::endl;
 
 			std::string ppmName = "scene" + std::to_string(scIdx + 1) + ".ppm";

@@ -19,6 +19,14 @@ namespace renderer
 		bool renderMonkeyMesh = false;
 		glm::mat4 monkeyTransform = glm::mat4(1.0f);
 		int monkeyMaterialIndex = 0;
+
+		// 3D SDF Texture Configuration for this scene
+		bool enableSdf3DTexture = true;
+		int sdfTextureResolution = 64;
+		float sdfTextureWorldSize = 2.0f;
+		glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+		int sdfTextureMaterialId = 14;
+		int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives
 	};
 
 	inline std::vector<SceneDefinition> getPredefinedScenes()
@@ -116,19 +124,24 @@ namespace renderer
 
 			// Sun light: Directional light with intensity 0 disables sky illumination (matching weird-engine)
 			cornell.lights.push_back({
-				.type = 0, // Directional light
-				.position = glm::vec3(0.0f, 0.0f, 0.0f),
-				.direction = glm::vec3(0.0f, -1.0f, 0.0f),
-				.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f) // w = 0.0 turns off sky
+					.type = 0, // Directional light
+					.position = glm::vec3(0.0f, 0.0f, 0.0f),
+					.direction = glm::vec3(0.0f, -1.0f, 0.0f),
+					.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f) // w = 0.0 turns off sky
 			});
 
 			// Ceiling point light
-			cornell.lights.push_back({
-				.type = 1, // Point light
-				.position = glm::vec3(0.0f, 3.85f, 0.0f),
-				.direction = glm::vec3(0.0f, -1.0f, 0.0f),
-				.color = glm::vec4(1.0f, 0.95f, 0.88f, 2.5f)
-			});
+			cornell.lights.push_back({.type = 1, // Point light
+																.position = glm::vec3(0.0f, 3.85f, 0.0f),
+																.direction = glm::vec3(0.0f, -1.0f, 0.0f),
+																.color = glm::vec4(1.0f, 0.95f, 0.88f, 2.5f)});
+
+			cornell.enableSdf3DTexture = true;
+			cornell.sdfTextureResolution = 64;
+			cornell.sdfTextureWorldSize = 2.0f;
+			cornell.sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+			cornell.sdfTextureMaterialId = 14;
+			cornell.sdfBakeMode = 0;
 
 			scenes.push_back(cornell);
 		}
@@ -143,6 +156,12 @@ namespace renderer
 			primitives.cameraYaw = -90.0f;
 			primitives.cameraPitch = -12.0f;
 			primitives.renderMonkeyMesh = false;
+			primitives.enableSdf3DTexture = false;
+			primitives.sdfTextureResolution = 128;
+			primitives.sdfTextureWorldSize = 10.0f;
+			primitives.sdfTextureOffset = glm::vec3(0.0f, 2.5f, -1.0f);
+			primitives.sdfTextureMaterialId = 14;
+			primitives.sdfBakeMode = 1;
 
 			primitives.glslShapesCode = R"(
 	// Checkered ground plane
@@ -231,16 +250,12 @@ namespace renderer
 			primitives.materials[14].metallic = 0.1f;
 
 			// Directional sun light + point fill
-			primitives.lights.push_back({
-				.type = 0,
-				.direction = glm::vec3(0.5f, -1.0f, -0.6f),
-				.color = glm::vec4(1.0f, 0.95f, 0.85f, 2.0f)
-			});
-			primitives.lights.push_back({
-				.type = 1,
-				.position = glm::vec3(0.0f, 1.5f, 0.0f),
-				.color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)
-			});
+			primitives.lights.push_back({.type = 0,
+																	 .direction = glm::vec3(0.5f, -1.0f, -0.6f),
+																	 .color = glm::vec4(1.0f, 0.95f, 0.85f, 2.0f)});
+			primitives.lights.push_back({.type = 1,
+																	 .position = glm::vec3(0.0f, 1.5f, 0.0f),
+																	 .color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
 
 			scenes.push_back(primitives);
 		}
@@ -332,24 +347,70 @@ namespace renderer
 			hybrid.materials[14].metallic = 0.1f;
 
 			// Point light above the monkey
-			hybrid.lights.push_back({
-				.type = 1,
-				.position = glm::vec3(0.0f, 3.5f, 0.5f),
-				.color = glm::vec4(1.0f, 0.95f, 0.9f, 2.5f)
-			});
+			hybrid.lights.push_back({.type = 1,
+															 .position = glm::vec3(0.0f, 3.5f, 0.5f),
+															 .color = glm::vec4(1.0f, 0.95f, 0.9f, 2.5f)});
 			// Colored fill point lights near the orbs
-			hybrid.lights.push_back({
-				.type = 1,
-				.position = glm::vec3(-2.0f, 1.5f, -0.5f),
-				.color = glm::vec4(0.1f, 0.8f, 1.0f, 1.2f)
-			});
-			hybrid.lights.push_back({
-				.type = 1,
-				.position = glm::vec3(2.0f, 1.5f, -0.5f),
-				.color = glm::vec4(1.0f, 0.15f, 0.65f, 1.2f)
-			});
+			hybrid.lights.push_back({.type = 1,
+															 .position = glm::vec3(-2.0f, 1.5f, -0.5f),
+															 .color = glm::vec4(0.1f, 0.8f, 1.0f, 1.2f)});
+			hybrid.lights.push_back({.type = 1,
+															 .position = glm::vec3(2.0f, 1.5f, -0.5f),
+															 .color = glm::vec4(1.0f, 0.15f, 0.65f, 1.2f)});
+
+			hybrid.enableSdf3DTexture = true;
+			hybrid.sdfTextureResolution = 64;
+			hybrid.sdfTextureWorldSize = 2.0f;
+			hybrid.sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+			hybrid.sdfTextureMaterialId = 14;
+			hybrid.sdfBakeMode = 0;
 
 			scenes.push_back(hybrid);
+		}
+
+		// -------------------------------------------------------------
+		// Scene 4: 3D SDF Texture Only (Empty Scene)
+		// -------------------------------------------------------------
+		{
+			SceneDefinition textureOnly;
+			textureOnly.name = "3D Texture Only";
+			textureOnly.cameraPosition = glm::vec3(0.0f, 2.5f, 5.5f);
+			textureOnly.cameraYaw = -90.0f;
+			textureOnly.cameraPitch = -12.0f;
+			textureOnly.renderMonkeyMesh = false;
+
+			textureOnly.glslShapesCode = R"(
+	// Empty scene - only the 3D volumetric SDF texture is evaluated
+)";
+
+			textureOnly.enableSdf3DTexture = true;
+			textureOnly.sdfTextureResolution = 128;
+			textureOnly.sdfTextureWorldSize = 10.0f;
+			textureOnly.sdfTextureOffset = glm::vec3(0.0f, 2.5f, -1.0f);
+			textureOnly.sdfTextureMaterialId = 14;
+			textureOnly.sdfBakeMode = 1; // Scene 2 geometric primitives copy
+
+			textureOnly.materials.resize(16);
+			// Mat 0: Default background / dummy material
+			textureOnly.materials[0].name = "Default";
+			textureOnly.materials[0].color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+
+			// Mat 14: 3D SDF Texture Material
+			textureOnly.materials[14].name = "3D SDF Material";
+			textureOnly.materials[14].color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f);
+			textureOnly.materials[14].roughness = 1.0f;
+			textureOnly.materials[14].metallic = 0.0f;
+
+			// Directional sun light for atmosphere sky and direct lighting
+			textureOnly.lights.push_back({.type = 0, // Directional light
+																		.direction = glm::normalize(glm::vec3(1.0f, 0.25f, 1.0f)),
+																		.color = glm::vec4(1.0f, 0.95f, 0.85f, 0.01f)});
+
+			textureOnly.lights.push_back({.type = 1, // Point fill light
+																		.position = glm::vec3(0.0f, 3.5f, 0.0f),
+																		.color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
+
+			scenes.push_back(textureOnly);
 		}
 
 		return scenes;

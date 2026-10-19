@@ -28,6 +28,7 @@ namespace renderer
 			int rayBounces = 3;
 			float contrast = 1.15f;
 			bool enableAntialiasing = true;
+			bool enableMeshShadows = true;
 
 			// SVGF Denoising Parameters
 			bool enableDenoising = true;
@@ -45,15 +46,25 @@ namespace renderer
 			float sdfTextureWorldSize = 2.0f;
 			glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
 			int sdfTextureMaterialId = 14;
+			int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives
+
+			// Post-Processing Anti-Aliasing (FXAA)
+			bool enableFxaa = true;
+			int fxaaMode = 0; // 0 = Standard FXAA, 1 = Derivative FXAA (dFdx/dFdy)
+			float fxaaThreshold = 0.05f;
 		};
+
 
 		PathTracerPipeline(const Config& config, const std::string& shadersRoot, const std::string& assetsRoot);
 		~PathTracerPipeline();
 
 		void resize(unsigned int width, unsigned int height);
-		void setScene(const SceneDefinition& scene);
-		void resetAccumulation();
+		void setScene(const SceneDefinition& scene, int sceneIndex = 0);
+		void resetAccumulation(bool resetTemporal = false);
+		void generateSdf3DTexture(int sceneIndex);
+		void generateSdf3DTexture(int sceneIndex, int bakeMode, int resolution, float worldSize, const glm::vec3& worldOffset);
 		void generateSdf3DTexture();
+		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene);
 		void saveScreenshot(const std::string& filename);
@@ -74,10 +85,12 @@ namespace renderer
 		Shader m_temporalShader;
 		Shader m_atrousShader;
 		Shader m_resolveShader;
+		Shader m_fxaaShader;
 		ComputeShader m_sdfComputeShader;
 
-		// 3D SDF volume texture
-		Texture3D m_sdf3DTexture;
+		// 3D SDF volume textures per scene
+		std::vector<Texture3D> m_scene3DTextures;
+		int m_currentSceneIndex = 0;
 
 		// GBuffer resources for mesh rasterization
 		Texture m_gbufferAlbedo;
@@ -116,6 +129,10 @@ namespace renderer
 		Texture m_accumTexture[2];
 		Framebuffer m_accumFbo[2];
 		int m_accumIdx = 0;
+
+		// Resolved intermediate sRGB target before FXAA
+		Texture m_resolvedTexture;
+		Framebuffer m_resolvedFbo;
 
 		// Final resolve output
 		Texture m_outputTexture;

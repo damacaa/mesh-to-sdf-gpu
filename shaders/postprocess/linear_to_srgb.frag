@@ -65,24 +65,30 @@ void main()
 			// Estimated Variance visualization (standard deviation false color)
 			float sd = sqrt(max(variance, 0.0)) * 2.5;
 			col = clamp(vec3(sd * 1.5, sd * 0.7, sd * 0.2), 0.0, 1.0);
-			FragColor = vec4(col, 1.0);
+			float luma = dot(col, vec3(0.299, 0.587, 0.114));
+			FragColor = vec4(col, luma);
 			return;
 		}
 		else if (u_debugView == 4)
 		{
 			// Surface normals
 			vec3 n = normalSample.rgb * 0.5 + 0.5;
-			FragColor = vec4(n, 1.0);
+			float luma = dot(n, vec3(0.299, 0.587, 0.114));
+			FragColor = vec4(n, luma);
 			return;
 		}
 		else if (u_debugView == 5)
 		{
 			// Surface albedo
-			FragColor = vec4(pow(max(albedo, vec3(0.0)), vec3(0.4545)), 1.0);
+			vec3 srgbAlbedo = pow(max(albedo, vec3(0.0)), vec3(0.4545));
+			float luma = dot(srgbAlbedo, vec3(0.299, 0.587, 0.114));
+			FragColor = vec4(srgbAlbedo, luma);
 			return;
 		}
 	}
 
-	// sRGB gamma conversion
-	FragColor = vec4(pow(max(col, vec3(0.0)), vec3(0.4545)), 1.0);
+	// sRGB gamma conversion and perceptual luminance packing for FXAA
+	vec3 srgbCol = pow(max(col, vec3(0.0)), vec3(0.4545));
+	float luma = dot(srgbCol, vec3(0.299, 0.587, 0.114));
+	FragColor = vec4(srgbCol, luma);
 }
