@@ -14,6 +14,9 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "Build SDL test library" FORCE)
 
 add_subdirectory(third-party/SDL EXCLUDE_FROM_ALL)
 
+# OpenGL setup
+find_package(OpenGL REQUIRED)
+
 # GLAD setup (OpenGL 4.6 Core)
 add_library(glad STATIC
     third-party/glad/src/glad.c
@@ -72,10 +75,15 @@ target_link_libraries(tfm_pathtracer PRIVATE
     SDL3::SDL3
     glad
     imgui
-    GL
-    dl
-    pthread
+    OpenGL::GL
 )
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(tfm_pathtracer PRIVATE
+        dl
+        pthread
+    )
+endif()
 
 target_compile_definitions(tfm_pathtracer PRIVATE
     SHADERS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
