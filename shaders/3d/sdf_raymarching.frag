@@ -404,6 +404,26 @@ vec3 get3DTextureNormal(vec3 p)
 	return nLen > 1e-5 ? n / nLen : vec3(0.0, 1.0, 0.0);
 }
 
+float getSurfaceBias(vec3 p)
+{
+	float bias = 0.01;
+	if (u_enableSdf3DTexture == 1)
+	{
+		float texRes = float(textureSize(t_sdfTexture3D, 0).x);
+		if (texRes > 1.0)
+		{
+			float voxelSize = u_sdfTextureWorldSize / texRes;
+			vec3 q = abs(p - u_sdfTextureOffset) - vec3(u_sdfTextureWorldSize * 0.5);
+			float distToBox = length(max(q, vec3(0.0)));
+			if (distToBox <= voxelSize)
+			{
+				bias = max(bias, voxelSize * 0.75);
+			}
+		}
+	}
+	return bias;
+}
+
 vec3 getNormal(vec3 p)
 {
 	vec3 scene = sceneSdf(p);
@@ -475,6 +495,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		fresnelPower = mix(50.0, 1.0, currentF0);
 
 		vec3 N = (bounce == 0) ? firstN : getNormal(p);
+		float bias = getSurfaceBias(p);
 
 		float fresnel = currentF0 + ((1.0 - currentF0) * pow(clamp(1.0 - dot(-currentRd, N), 0.0, 1.0), fresnelPower));
 
@@ -528,7 +549,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 				attenuation *= smoothstep(0.80, 0.95, spotEffect);
 			}
 
-			RayHit shadowHit = rayMarch(p + N * 0.01, L);
+			RayHit shadowHit = rayMarch(p + N * bias, L);
 			bool hitObstacle = shadowHit.hit && (shadowHit.dist < lightDist);
 
 			if (!hitObstacle)
@@ -570,7 +591,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		vec3 bounceDir = isSpecular ? specularDir : diffuseDir;
 		currentRd = bounceDir;
 
-		RayHit bounceHit = rayMarch(p + N * 0.01, bounceDir);
+		RayHit bounceHit = rayMarch(p + N * bias, bounceDir);
 		float d = bounceHit.dist;
 
 		if (isSpecular)
@@ -605,7 +626,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 				break;
 			}
 
-			p = p + N * 0.01 + d * bounceDir;
+			p = p + N * bias + d * bounceDir;
 			vec3 preBounceScene = sceneSdf(p);
 			float bounceBlend = preBounceScene.z;
 			float bounceJitterMask = smoothstep(0.0, 0.5, bounceBlend);
