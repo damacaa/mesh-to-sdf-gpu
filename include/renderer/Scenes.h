@@ -26,7 +26,7 @@ namespace renderer
 		float sdfTextureWorldSize = 2.0f;
 		glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
 		int sdfTextureMaterialId = 14;
-		int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives
+		int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives, 2 = Room with Window
 	};
 
 	inline std::vector<SceneDefinition> getPredefinedScenes()
@@ -411,6 +411,47 @@ namespace renderer
 																		.color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
 
 			scenes.push_back(textureOnly);
+		}
+
+		// -------------------------------------------------------------
+		// Scene 5: 3D SDF Texture Room with Window
+		// -------------------------------------------------------------
+		{
+			SceneDefinition roomScene;
+			roomScene.name = "3D Texture Room";
+			roomScene.cameraPosition = glm::vec3(0.0f, 1.6f, 1.2f);
+			roomScene.cameraYaw = -90.0f;
+			roomScene.cameraPitch = -5.0f;
+			roomScene.renderMonkeyMesh = false;
+
+			roomScene.glslShapesCode = R"(
+	// Empty scene - only the 3D volumetric SDF texture room is evaluated
+)";
+
+			roomScene.enableSdf3DTexture = true;
+			roomScene.sdfTextureResolution = 128;
+			roomScene.sdfTextureWorldSize = 6.0f;
+			roomScene.sdfTextureOffset = glm::vec3(0.0f, 2.0f, 0.0f);
+			roomScene.sdfTextureMaterialId = 14;
+			roomScene.sdfBakeMode = 2; // Closed room with subtract cube window
+
+			roomScene.materials.resize(16);
+			// Mat 0: Default background / dummy material
+			roomScene.materials[0].name = "Default";
+			roomScene.materials[0].color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+
+			// Mat 14: 3D SDF Texture Material for Room
+			roomScene.materials[14].name = "Room Plaster";
+			roomScene.materials[14].color = glm::vec4(0.88f, 0.85f, 0.82f, 1.0f);
+			roomScene.materials[14].roughness = 0.85f;
+			roomScene.materials[14].metallic = 0.0f;
+
+			// Directional sun light positioned to shine through the window
+			roomScene.lights.push_back({.type = 0, // Directional light
+																	.direction = glm::normalize(glm::vec3(-0.35f, 0.6f, -0.7f)),
+																	.color = glm::vec4(1.0f, 0.95f, 0.85f, 2.5f)});
+
+			scenes.push_back(roomScene);
 		}
 
 		return scenes;

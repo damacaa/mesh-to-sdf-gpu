@@ -165,7 +165,11 @@ int main(int argc, char* argv[])
 			{
 				switchScene(3);
 			}
-			else if (testFrames >= 80)
+			else if (testFrames == 80)
+			{
+				switchScene(4);
+			}
+			else if (testFrames >= 100)
 			{
 				std::cout << "All scenes rendered successfully without errors." << std::endl;
 				running = false;
@@ -192,6 +196,7 @@ int main(int argc, char* argv[])
 						else if (event.key.scancode == SDL_SCANCODE_2) targetScene = 1;
 						else if (event.key.scancode == SDL_SCANCODE_3) targetScene = 2;
 						else if (event.key.scancode == SDL_SCANCODE_4) targetScene = 3;
+						else if (event.key.scancode == SDL_SCANCODE_5) targetScene = 4;
 
 						if (targetScene >= 0)
 						{
@@ -333,14 +338,15 @@ int main(int argc, char* argv[])
 						"1. Cornell Box",
 						"2. Primitives Showcase",
 						"3. Hybrid Mesh + SDF",
-						"4. 3D Texture Only"
+						"4. 3D Texture Only",
+						"5. 3D Texture Room"
 					};
 					int selectedScene = currentSceneIndex;
 					if (ImGui::Combo("Scene", &selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
 					{
 						switchScene(selectedScene);
 					}
-					ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4");
+					ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4, 5");
 
 					ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
 					if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
@@ -352,7 +358,7 @@ int main(int argc, char* argv[])
 					{
 						bool needsRegen = false;
 
-						const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives" };
+						const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives", "Room with Window" };
 						if (ImGui::Combo("Bake Mode", &pipeline.getConfig().sdfBakeMode, bakeModes, IM_ARRAYSIZE(bakeModes)))
 						{
 							needsRegen = true;
@@ -392,9 +398,13 @@ int main(int argc, char* argv[])
 						{
 							ImGui::TextDisabled("Bake Shape: 1.0m diameter sphere");
 						}
-						else
+						else if (pipeline.getConfig().sdfBakeMode == 1)
 						{
 							ImGui::TextDisabled("Bake Shape: Scene 2 geometric primitives");
+						}
+						else if (pipeline.getConfig().sdfBakeMode == 2)
+						{
+							ImGui::TextDisabled("Bake Shape: Closed room with subtract cube window");
 						}
 					}
 				}
@@ -508,7 +518,7 @@ int main(int argc, char* argv[])
 			lastScreenshotPath = std::filesystem::absolute(filename).string();
 		}
 
-		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59 || testFrames == 79))
+		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59 || testFrames == 79 || testFrames == 99))
 		{
 			std::vector<unsigned char> pixels(windowWidth * windowHeight * 4);
 			glReadPixels(0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
@@ -518,7 +528,7 @@ int main(int argc, char* argv[])
 				sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / (3.0 * 255.0);
 			}
 			double avg = sum / (windowWidth * windowHeight);
-			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : ((testFrames == 59) ? 2 : 3));
+			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : ((testFrames == 59) ? 2 : ((testFrames == 79) ? 3 : 4)));
 			std::cout << "Scene " << (scIdx + 1) << " (" << scenes[scIdx].name << ") Average Brightness: " << avg << std::endl;
 
 			std::string ppmName = "scene" + std::to_string(scIdx + 1) + ".ppm";

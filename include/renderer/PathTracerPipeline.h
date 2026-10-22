@@ -46,7 +46,7 @@ namespace renderer
 			float sdfTextureWorldSize = 2.0f;
 			glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
 			int sdfTextureMaterialId = 14;
-			int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives
+			int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives, 2 = Room with Window
 
 			// Post-Processing Anti-Aliasing (FXAA)
 			bool enableFxaa = true;

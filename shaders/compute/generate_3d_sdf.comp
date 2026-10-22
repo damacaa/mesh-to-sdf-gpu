@@ -7,9 +7,31 @@ layout(r32f, binding = 0) uniform writeonly image3D u_sdfTexture;
 uniform ivec3 u_resolution;
 uniform float u_worldSize;
 uniform vec3 u_worldOffset;
-uniform int u_bakeMode; // 0 = Sphere, 1 = Scene 2 Primitives
+uniform int u_bakeMode; // 0 = Sphere, 1 = Scene 2 Primitives, 2 = Room with Window
 
 #include "hg_sdf.glsl"
+
+float roomWithWindowSDF(vec3 p)
+{
+	// Outer room box: width 4.8m (X: +/-2.4), height 3.6m (Y: +/-1.8), depth 4.8m (Z: +/-2.4)
+	vec3 roomOuter = vec3(2.4, 1.8, 2.4);
+	float dOuter = fBox(p, roomOuter);
+
+	// Inner room box: wall thickness 0.25m -> hollow interior
+	vec3 roomInner = vec3(2.15, 1.55, 2.15);
+	float dInner = fBox(p, roomInner);
+
+	// Hollow closed room (max with inverted inner box)
+	float dRoom = max(dOuter, -dInner);
+
+	// Subtract cube for window opening on the back wall (-Z)
+	vec3 windowCenter = vec3(0.0, 0.0, -2.3);
+	vec3 windowHalfSize = vec3(0.8, 0.6, 0.35);
+	float dWindow = fBox(p - windowCenter, windowHalfSize);
+
+	// Window made with a subtract cube
+	return max(dRoom, -dWindow);
+}
 
 float scene2SDF(vec3 p)
 {
@@ -82,6 +104,11 @@ void main()
 	{
 		// Scene 2 geometric primitives
 		dist = scene2SDF(worldPos);
+	}
+	else if (u_bakeMode == 2)
+	{
+		// Closed room with subtract cube window
+		dist = roomWithWindowSDF(worldPos - u_worldOffset);
 	}
 
 	imageStore(u_sdfTexture, voxelCoord, vec4(dist, 0.0, 0.0, 0.0));
