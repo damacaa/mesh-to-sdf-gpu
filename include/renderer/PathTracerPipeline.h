@@ -34,8 +34,9 @@ namespace renderer
 			bool enableDenoising = true;
 			int atrousIterations = 4;
 			float temporalAlpha = 0.15f;
+			int maxHistoryFrames = 32;
 			float phiNormal = 32.0f;
-			float phiDepth = 1.0f;
+			float phiDepth = 0.1f;
 			float phiLuminance = 4.0f;
 			bool demodulateAlbedo = false;
 			int debugView = 0;
@@ -52,6 +53,9 @@ namespace renderer
 			bool enableFxaa = true;
 			int fxaaMode = 0; // 0 = Standard FXAA, 1 = Derivative FXAA (dFdx/dFdy)
 			float fxaaThreshold = 0.05f;
+
+			// Noise Generation (White Noise vs Spatiotemporal Blue Noise)
+			bool enableBlueNoise = true;
 		};
 
 
@@ -67,6 +71,12 @@ namespace renderer
 		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene);
+		enum class LightingStage { Raw, Temporal, Filtered };
+		// Read linear RGB before contrast, gamma, and FXAA. Rows start at the bottom.
+		std::vector<glm::vec4> readLighting(LightingStage stage) const;
+		std::vector<unsigned char> readSurfaceMask() const;
+		void restartSampling(int seed = 0);
+		bool isBlueNoiseAvailable() const { return m_blueNoiseAvailable; }
 		void saveScreenshot(const std::string& filename);
 		void debugPixel(int x, int y);
 
@@ -91,6 +101,13 @@ namespace renderer
 		// 3D SDF volume textures per scene
 		std::vector<Texture3D> m_scene3DTextures;
 		int m_currentSceneIndex = 0;
+
+		// STBN Spatiotemporal Blue Noise 3D textures
+		Texture3D m_stbnTexture0;
+		Texture3D m_stbnTexture1;
+		int m_noiseFrameCounter = 0;
+		int m_samplingSeed = 0;
+		bool m_blueNoiseAvailable = false;
 
 		// GBuffer resources for mesh rasterization
 		Texture m_gbufferAlbedo;
@@ -118,6 +135,8 @@ namespace renderer
 		Texture m_temporalWorldPos[2];
 		Framebuffer m_temporalFbo[2];
 		int m_temporalIdx = 0;
+		Texture m_filteredHistory;
+		bool m_historyValid = false;
 
 		// SVGF Multi-Scale À-Trous Wavelet filter ping-pong resources
 		Texture m_atrousPingTexture;

@@ -85,7 +85,43 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+option(TFM_BUILD_BENCHMARKS "Build the lighting quality benchmark" OFF)
+if(TFM_BUILD_BENCHMARKS)
+    set(BENCHMARK_RENDER_SOURCES ${SOURCES})
+    list(REMOVE_ITEM BENCHMARK_RENDER_SOURCES src/main.cpp)
+    add_executable(tfm_lighting_benchmark tests/lighting_benchmark.cpp ${BENCHMARK_RENDER_SOURCES})
+    target_include_directories(tfm_lighting_benchmark PRIVATE
+        $<TARGET_PROPERTY:tfm_pathtracer,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(tfm_lighting_benchmark PRIVATE
+        $<TARGET_PROPERTY:tfm_pathtracer,COMPILE_DEFINITIONS>)
+    target_link_libraries(tfm_lighting_benchmark PRIVATE SDL3::SDL3 glad OpenGL::GL)
+    enable_testing()
+    add_executable(tfm_lighting_metrics_tests tests/lighting_metrics_tests.cpp)
+    target_include_directories(tfm_lighting_metrics_tests PRIVATE include third-party)
+    add_test(NAME lighting_metrics COMMAND tfm_lighting_metrics_tests)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME lighting_benchmark_smoke COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_smoke.py $<TARGET_FILE:tfm_lighting_benchmark>)
+        set_tests_properties(lighting_benchmark_smoke PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+    endif()
+endif()
+
 target_compile_definitions(tfm_pathtracer PRIVATE
     SHADERS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
     ASSETS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets"
 )
+
+option(TFM_BUILD_RENDER_TESTS "Build GPU regression tests" OFF)
+if(TFM_BUILD_RENDER_TESTS)
+    enable_testing()
+    set(RENDER_TEST_SOURCES ${SOURCES})
+    list(REMOVE_ITEM RENDER_TEST_SOURCES src/main.cpp)
+    add_executable(tfm_render_tests tests/render_tests.cpp ${RENDER_TEST_SOURCES})
+    target_include_directories(tfm_render_tests PRIVATE
+        $<TARGET_PROPERTY:tfm_pathtracer,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(tfm_render_tests PRIVATE
+        $<TARGET_PROPERTY:tfm_pathtracer,COMPILE_DEFINITIONS>)
+    target_link_libraries(tfm_render_tests PRIVATE SDL3::SDL3 glad OpenGL::GL)
+    add_test(NAME render_regressions COMMAND tfm_render_tests)
+endif()

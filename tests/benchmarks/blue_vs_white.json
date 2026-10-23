@@ -1,0 +1,18 @@
+{
+  "scene": 5,
+  "width": 192,
+  "height": 108,
+  "frames": 256,
+  "warmup_frames": 64,
+  "reference_frames": 2048,
+  "reference_seed": 104729,
+  "seeds": [1, 17, 53],
+  "ray_bounces": 3,
+  "mask": "surfaces",
+  "cases": [
+    {"name": "white_alpha005", "noise": "white", "temporal_alpha": 0.05},
+    {"name": "blue_alpha005", "noise": "blue", "temporal_alpha": 0.05},
+    {"name": "white_alpha015", "noise": "white", "temporal_alpha": 0.15},
+    {"name": "blue_alpha015", "noise": "blue", "temporal_alpha": 0.15}
+  ]
+}

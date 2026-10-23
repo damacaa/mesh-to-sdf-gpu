@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 
 namespace renderer
 {
@@ -31,6 +32,21 @@ namespace renderer
 			m_monkeyModel.loadGLTF(monkeyPath);
 		}
 
+		// Load Spatiotemporal Blue Noise (STBN) textures
+		std::string stbn0Path = assetsRoot + "/stbn/stbn0.bin";
+		std::string stbn1Path = assetsRoot + "/stbn/stbn1.bin";
+		if (!m_stbnTexture0.loadFromFile(stbn0Path, 128, 128, 64, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_REPEAT))
+		{
+			std::cerr << "PathTracerPipeline: Failed to load STBN texture 0: " << stbn0Path << std::endl;
+		}
+		if (!m_stbnTexture1.loadFromFile(stbn1Path, 128, 128, 64, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_REPEAT))
+		{
+			std::cerr << "PathTracerPipeline: Failed to load STBN texture 1: " << stbn1Path << std::endl;
+		}
+
+		m_blueNoiseAvailable = m_stbnTexture0.id != 0 && m_stbnTexture1.id != 0;
+		m_config.enableBlueNoise = m_config.enableBlueNoise && m_blueNoiseAvailable;
+
 		auto predefinedScenes = getPredefinedScenes();
 		initSceneTextures(predefinedScenes);
 		resize(m_config.renderWidth, m_config.renderHeight);
@@ -43,6 +59,8 @@ namespace renderer
 			tex.dispose();
 		}
 		m_scene3DTextures.clear();
+		m_stbnTexture0.dispose();
+		m_stbnTexture1.dispose();
 		freeResources();
 	}
 
@@ -82,6 +100,7 @@ namespace renderer
 		m_temporalWorldPos[0].dispose();
 		m_temporalWorldPos[1].dispose();
 
+		m_filteredHistory.dispose();
 		m_atrousPingTexture.dispose();
 		m_atrousPongTexture.dispose();
 
@@ -145,6 +164,9 @@ namespace renderer
 			m_temporalFbo[i].attachColorTexture(m_temporalNormal[i], 2);
 			m_temporalFbo[i].attachColorTexture(m_temporalWorldPos[i], 3);
 		}
+
+		m_filteredHistory = Texture(width, height, Texture::TextureType::LinearData);
+		m_historyValid = false;
 
 		// 5. À-Trous Wavelet filter ping-pong buffers
 		m_atrousPingTexture = Texture(width, height, Texture::TextureType::LinearData);
@@ -235,8 +257,52 @@ namespace renderer
 		m_frameCounter = 0;
 		if (resetTemporal)
 		{
+			m_historyValid = false;
 			m_firstFrame = true;
 		}
+	}
+
+	void PathTracerPipeline::restartSampling(int seed)
+	{
+		if (seed < 0) throw std::invalid_argument("The sampling seed must be nonnegative.");
+		m_samplingSeed = seed;
+		m_noiseFrameCounter = seed & 63;
+		resetAccumulation(true);
+	}
+
+	std::vector<glm::vec4> PathTracerPipeline::readLighting(LightingStage stage) const
+	{
+		if (!m_config.enableDenoising || !m_historyValid)
+			throw std::logic_error("Render a denoised frame before reading linear lighting.");
+		const Texture* texture = &m_primaryIllum;
+		if (stage != LightingStage::Raw) texture = &m_temporalIllum[(m_temporalIdx + 1) % 2];
+		int iterations = std::clamp(m_config.atrousIterations, 0, 5);
+		if (stage == LightingStage::Filtered && iterations > 0)
+			texture = (iterations % 2 == 1) ? &m_atrousPingTexture : &m_atrousPongTexture;
+		std::vector<glm::vec4> pixels(size_t(m_config.renderWidth) * m_config.renderHeight);
+		glGetTextureImage(texture->id, 0, GL_RGBA, GL_FLOAT,
+			static_cast<GLsizei>(pixels.size() * sizeof(glm::vec4)), pixels.data());
+		if (m_config.demodulateAlbedo)
+		{
+			std::vector<glm::vec4> albedo(pixels.size());
+			glGetTextureImage(m_primaryAlbedo.id, 0, GL_RGBA, GL_FLOAT,
+				static_cast<GLsizei>(albedo.size() * sizeof(glm::vec4)), albedo.data());
+			// Match the resolve pass, including its treatment of dark albedos.
+			for (size_t i = 0; i < pixels.size(); ++i)
+				for (int channel = 0; channel < 3; ++channel) pixels[i][channel] *= albedo[i][channel];
+		}
+		return pixels;
+	}
+
+	std::vector<unsigned char> PathTracerPipeline::readSurfaceMask() const
+	{
+		if (!m_historyValid) throw std::logic_error("Render a frame before reading its surface mask.");
+		std::vector<glm::vec4> normals(size_t(m_config.renderWidth) * m_config.renderHeight);
+		glGetTextureImage(m_primaryNormal.id, 0, GL_RGBA, GL_FLOAT,
+			static_cast<GLsizei>(normals.size() * sizeof(glm::vec4)), normals.data());
+		std::vector<unsigned char> mask(normals.size());
+		for (size_t i = 0; i < mask.size(); ++i) mask[i] = normals[i].w > 0.5f ? 1 : 0;
+		return mask;
 	}
 
 	void PathTracerPipeline::generateSdf3DTexture(int sceneIndex, int bakeMode, int resolution, float worldSize, const glm::vec3& worldOffset)
@@ -280,8 +346,18 @@ namespace renderer
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene)
 	{
-		// Detect camera movement or shader recompile
-		if (m_oldCameraView != camera.view || m_sdfShader.hasRecompiled())
+		m_noiseFrameCounter = (m_noiseFrameCounter + 1) & 63;
+
+		// Detect shader changes before the current frame uses history.
+		bool shaderChanged = m_sdfShader.hasRecompiled();
+		m_sdfShader.use();
+		if (shaderChanged || m_sdfShader.hasRecompiled())
+		{
+			resetAccumulation(true);
+		}
+
+		bool cameraMoved = (m_oldCameraView != camera.view || m_prevCameraMatrix != camera.cameraMatrix);
+		if (cameraMoved)
 		{
 			m_frameCounter = 0;
 			m_oldCameraView = camera.view;
@@ -470,6 +546,16 @@ namespace renderer
 			m_sdfShader.setUniform("t_gbufferBackDepth", 7);
 			m_backDepthTexture.bind(7);
 
+			m_sdfShader.setUniform("u_enableBlueNoise", (m_config.enableBlueNoise && m_blueNoiseAvailable) ? 1 : 0);
+			m_sdfShader.setUniform("u_noiseFrameIndex", m_noiseFrameCounter);
+			m_sdfShader.setUniform("u_samplingSeed", m_samplingSeed);
+
+			m_sdfShader.setUniform("t_stbn0", 8);
+			m_stbnTexture0.bind(8);
+
+			m_sdfShader.setUniform("t_stbn1", 9);
+			m_stbnTexture1.bind(9);
+
 			glDisable(GL_DEPTH_TEST);
 			m_quad.draw();
 			glEnable(GL_DEPTH_TEST);
@@ -495,10 +581,13 @@ namespace renderer
 			glDrawBuffers(4, tempBuffers);
 
 			m_temporalShader.use();
+			if (m_temporalShader.hasRecompiled()) m_historyValid = false;
+			m_temporalShader.setUniform("u_resetHistory", m_historyValid ? 0 : 1);
 			m_temporalShader.setUniform("u_prevViewProj", prevCamMatrix);
 			m_temporalShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
 			m_temporalShader.setUniform("u_alpha", m_config.temporalAlpha);
-			m_temporalShader.setUniform("u_maxHistory", 32.0f);
+			m_temporalShader.setUniform("u_maxHistory", float(std::max(m_config.maxHistoryFrames, 1)));
+			m_temporalShader.setUniform("u_cameraMoved", cameraMoved ? 1 : 0);
 
 			// Current frame inputs
 			m_temporalShader.setUniform("t_currIllum", 0);
@@ -510,12 +599,9 @@ namespace renderer
 			m_temporalShader.setUniform("t_currWorldPos", 2);
 			m_primaryWorldPos.bind(2);
 
-			m_temporalShader.setUniform("t_currAlbedo", 3);
-			m_primaryAlbedo.bind(3);
-
 			// Previous history inputs
 			m_temporalShader.setUniform("t_prevIllum", 4);
-			m_temporalIllum[prevTempIdx].bind(4);
+			m_filteredHistory.bind(4);
 
 			m_temporalShader.setUniform("t_prevMoments", 5);
 			m_temporalMoments[prevTempIdx].bind(5);
@@ -576,6 +662,14 @@ namespace renderer
 				m_quad.draw();
 				glEnable(GL_DEPTH_TEST);
 
+				if (i == 0)
+				{
+					// Save the first spatial result before later iterations reuse the ping texture.
+					glCopyImageSubData(m_atrousPingTexture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+						m_filteredHistory.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+						m_config.renderWidth, m_config.renderHeight, 1);
+				}
+
 				if (i % 2 == 0)
 				{
 					finalFilteredTexture = &m_atrousPingTexture;
@@ -585,6 +679,18 @@ namespace renderer
 					finalFilteredTexture = &m_atrousPongTexture;
 				}
 			}
+			if (iterations == 0)
+			{
+				// Temporal-only mode still needs a valid color history.
+				glCopyImageSubData(m_temporalIllum[m_temporalIdx].id, GL_TEXTURE_2D, 0, 0, 0, 0,
+					m_filteredHistory.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+					m_config.renderWidth, m_config.renderHeight, 1);
+			}
+			m_historyValid = true;
+		}
+		else
+		{
+			m_historyValid = false;
 		}
 
 		// -------------------------------------------------------------

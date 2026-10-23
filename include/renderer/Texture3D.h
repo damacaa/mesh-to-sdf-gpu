@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glad/glad.h>
+#include <string>
 
 namespace renderer
 {
@@ -20,6 +21,13 @@ namespace renderer
 		Texture3D& operator=(const Texture3D&) = delete;
 
 		void allocate(int width, int height, int depth, GLenum internalFormat = GL_R32F);
+		void allocateWithData(int width, int height, int depth,
+		                      GLenum internalFormat, GLenum format, GLenum type,
+		                      const void* data,
+		                      GLenum filter = GL_NEAREST, GLenum wrap = GL_REPEAT);
+		bool loadFromFile(const std::string& filePath, int width, int height, int depth,
+		                  GLenum internalFormat = GL_RGBA8, GLenum format = GL_RGBA, GLenum type = GL_UNSIGNED_BYTE,
+		                  GLenum filter = GL_NEAREST, GLenum wrap = GL_REPEAT);
 		void bind(GLuint unit = 0) const;
 		void bindImage(GLuint unit = 0, GLenum access = GL_WRITE_ONLY) const;
 		void dispose();

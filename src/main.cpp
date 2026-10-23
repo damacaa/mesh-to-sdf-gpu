@@ -27,6 +27,8 @@
 
 int main(int argc, char* argv[])
 {
+	bool isTestMode = (argc > 1 && std::string(argv[1]) == "--test");
+
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
 	{
 		std::cerr << "Failed to initialize SDL3: " << SDL_GetError() << std::endl;
@@ -46,7 +48,7 @@ int main(int argc, char* argv[])
 		"TFM Path Tracer Prototype",
 		windowWidth,
 		windowHeight,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | (isTestMode ? SDL_WINDOW_HIDDEN : 0)
 	);
 
 	if (!window)
@@ -131,7 +133,6 @@ int main(int argc, char* argv[])
 		}
 	};
 
-	bool isTestMode = (argc > 1 && std::string(argv[1]) == "--test");
 	int testFrames = 0;
 
 	bool running = true;
@@ -351,7 +352,7 @@ int main(int argc, char* argv[])
 					ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
 					if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
 					{
-						pipeline.resetAccumulation();
+						pipeline.resetAccumulation(true);
 					}
 
 					if (pipeline.getConfig().enableSdf3DTexture)
@@ -385,13 +386,13 @@ int main(int argc, char* argv[])
 
 						if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
 						{
-							pipeline.resetAccumulation();
+							pipeline.resetAccumulation(true);
 						}
 
 						if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
 						{
 							pipeline.generateSdf3DTexture();
-							pipeline.resetAccumulation();
+							pipeline.resetAccumulation(true);
 						}
 
 						if (pipeline.getConfig().sdfBakeMode == 0)
@@ -414,7 +415,7 @@ int main(int argc, char* argv[])
 					ImGui::SeparatorText("Path Tracer Settings");
 					if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
 					{
-						pipeline.resetAccumulation();
+						pipeline.resetAccumulation(true);
 					}
 					if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
 					{
@@ -422,13 +423,22 @@ int main(int argc, char* argv[])
 					}
 					if (ImGui::Checkbox("Mesh Casts Shadows", &pipeline.getConfig().enableMeshShadows))
 					{
-						pipeline.resetAccumulation();
+						pipeline.resetAccumulation(true);
 					}
 
 					ImGui::SeparatorText("Denoising & Accumulation");
 					if (ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising))
 					{
 						pipeline.resetAccumulation(true);
+					}
+
+					if (ImGui::Checkbox("Spatiotemporal Blue Noise (STBN)", &pipeline.getConfig().enableBlueNoise))
+					{
+						pipeline.resetAccumulation(true);
+					}
+					if (ImGui::IsItemHovered())
+					{
+						ImGui::SetTooltip("Switch between Spatiotemporal Blue Noise (NVIDIA STBN) and White Noise (PCG).\nSTBN can reduce residual noise after filtering, especially while the camera is still.");
 					}
 
 					if (pipeline.getConfig().enableDenoising)
@@ -442,12 +452,18 @@ int main(int argc, char* argv[])
 							"Surface Albedo"
 						};
 						ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
-						ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5);
+						if (ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5))
+						{
+							pipeline.resetAccumulation(true);
+						}
 						ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
 						ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
-						ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.1f, 5.0f, "%.2f");
+						ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.01f, 1.0f, "%.2f");
 						ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
-						ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo);
+						if (ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo))
+						{
+							pipeline.resetAccumulation(true);
+						}
 					}
 					else
 					{

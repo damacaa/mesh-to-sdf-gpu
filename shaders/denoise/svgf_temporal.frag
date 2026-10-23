@@ -10,9 +10,8 @@ in vec2 v_texCoord;
 uniform sampler2D t_currIllum;     // RGB = raw illumination, A = linear depth
 uniform sampler2D t_currNormal;    // RGB = world normal, A = hit mask
 uniform sampler2D t_currWorldPos;  // RGB = world position, A = 1.0
-uniform sampler2D t_currAlbedo;    // RGB = albedo, A = 1.0
 
-uniform sampler2D t_prevIllum;     // Previous integrated illumination + variance
+uniform sampler2D t_prevIllum;     // Previous first spatial result + variance
 uniform sampler2D t_prevMoments;   // Previous moments (1st, 2nd, history length)
 uniform sampler2D t_prevNormal;    // Previous normal + hit mask
 uniform sampler2D t_prevWorldPos;  // Previous world position
@@ -21,6 +20,8 @@ uniform mat4 u_prevViewProj;
 uniform vec2 u_resolution;
 uniform float u_alpha;             // Temporal blend weight (default ~0.15)
 uniform float u_maxHistory;        // Max history frames (default ~32.0)
+uniform int u_resetHistory;        // 1 rejects all previous samples
+uniform int u_cameraMoved;         // 1 if camera moved this frame, 0 if static
 
 float luminance(vec3 color)
 {
@@ -31,7 +32,7 @@ void main()
 {
 	vec4 currIllumSample = texture(t_currIllum, v_texCoord);
 	vec3 currIllum = currIllumSample.rgb;
-	if (isnan(currIllum.r) || isnan(currIllum.g) || isnan(currIllum.b) || isinf(currIllum.r))
+	if (any(isnan(currIllum)) || any(isinf(currIllum)))
 	{
 		currIllum = vec3(0.0);
 	}
@@ -53,65 +54,83 @@ void main()
 		return;
 	}
 
-	// Reproject current world position into previous clip space
-	vec4 prevClip = u_prevViewProj * vec4(currWorldPos, 1.0);
-	vec2 prevNDC = prevClip.xy / max(prevClip.w, 1e-5);
-	vec2 prevUV = prevNDC * 0.5 + 0.5;
-
-	bool inside = (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0);
-
-	// Sample previous geometry buffer at reprojected UV
-	vec4 prevNormalSample = texture(t_prevNormal, prevUV);
-	vec3 prevNormal = prevNormalSample.rgb;
-	float prevHit = prevNormalSample.a;
-	vec3 prevWorldPos = texture(t_prevWorldPos, prevUV).rgb;
-
-	// Validate history consistency using normal alignment and plane distance
-	bool normalValid = dot(currNormal, prevNormal) > 0.75;
-	float planeDist = abs(dot(currNormal, currWorldPos - prevWorldPos));
-	bool depthValid = (planeDist < 0.25);
-	bool historyValid = inside && (prevHit > 0.5) && normalValid && depthValid;
-
-	// Compute 3x3 local color neighborhood bounding box for history clamping
-	vec3 cMin = currIllum;
-	vec3 cMax = currIllum;
-	vec3 m1 = vec3(0.0);
-	vec3 m2 = vec3(0.0);
-	float nWeight = 0.0;
-
-	for (int dy = -1; dy <= 1; ++dy)
+	vec2 prevUV;
+	if (u_cameraMoved == 0)
 	{
-		for (int dx = -1; dx <= 1; ++dx)
-		{
-			vec2 offset = vec2(float(dx), float(dy)) / u_resolution;
-			vec4 tapNormalSample = texture(t_currNormal, v_texCoord + offset);
-			if (tapNormalSample.a < 0.5)
-			{
-				continue;
-			}
-
-			vec3 c = texture(t_currIllum, v_texCoord + offset).rgb;
-			cMin = min(cMin, c);
-			cMax = max(cMax, c);
-			m1 += c;
-			m2 += c * c;
-			nWeight += 1.0;
-		}
-	}
-
-	if (nWeight > 0.0)
-	{
-		m1 /= nWeight;
-		m2 /= nWeight;
+		prevUV = v_texCoord;
 	}
 	else
 	{
-		m1 = currIllum;
-		m2 = currIllum * currIllum;
+		vec4 prevClip = u_prevViewProj * vec4(currWorldPos, 1.0);
+		prevUV = (prevClip.w > 1e-5) ? (prevClip.xy / prevClip.w * 0.5 + 0.5) : vec2(-1.0);
 	}
-	vec3 sigma = sqrt(max(m2 - m1 * m1, vec3(0.0)));
-	vec3 boxMin = min(cMin, m1 - 1.5 * sigma);
-	vec3 boxMax = max(cMax, m1 + 1.5 * sigma);
+
+	bool inside = (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0);
+
+	// 4-tap bilateral bilinear reprojection prevents bleeding across depth/normal edges
+	vec2 prevPos = prevUV * u_resolution - 0.5;
+	ivec2 p0 = ivec2(floor(prevPos));
+	vec2 f = clamp(fract(prevPos), 0.0, 1.0);
+
+	float w[4];
+	w[0] = (1.0 - f.x) * (1.0 - f.y);
+	w[1] = f.x * (1.0 - f.y);
+	w[2] = (1.0 - f.x) * f.y;
+	w[3] = f.x * f.y;
+
+	ivec2 offsets[4] = ivec2[4](
+		ivec2(0, 0),
+		ivec2(1, 0),
+		ivec2(0, 1),
+		ivec2(1, 1)
+	);
+
+	vec3 prevIllumSum = vec3(0.0);
+	vec2 prevMomentsSum = vec2(0.0);
+	float prevHistorySum = 0.0;
+	float weightSum = 0.0;
+
+	for (int i = 0; i < (u_cameraMoved == 0 ? 1 : 4) && inside && u_resetHistory == 0; ++i)
+	{
+		ivec2 tapCoord = (u_cameraMoved == 0) ? ivec2(gl_FragCoord.xy) : (p0 + offsets[i]);
+		if (tapCoord.x < 0 || tapCoord.x >= int(u_resolution.x) ||
+		    tapCoord.y < 0 || tapCoord.y >= int(u_resolution.y))
+		{
+			continue;
+		}
+
+		vec4 tapNormalSample = texelFetch(t_prevNormal, tapCoord, 0);
+		if (tapNormalSample.a < 0.5)
+		{
+			continue;
+		}
+
+		vec3 tapNormal = tapNormalSample.rgb;
+		vec3 tapPos = texelFetch(t_prevWorldPos, tapCoord, 0).rgb;
+
+		// Bilateral rejection: discard taps belonging to different geometry (e.g. foreground emissive object)
+		bool tapNormalValid = dot(currNormal, tapNormal) > 0.75;
+		float tapPlaneDist = abs(dot(currNormal, currWorldPos - tapPos));
+		bool tapDepthValid = (tapPlaneDist < 0.15);
+
+		if (tapNormalValid && tapDepthValid)
+		{
+			float tapW = (u_cameraMoved == 0) ? 1.0 : w[i];
+			vec4 tapIllum = texelFetch(t_prevIllum, tapCoord, 0);
+			vec4 tapMoments = texelFetch(t_prevMoments, tapCoord, 0);
+
+			if (!any(isnan(tapIllum)) && !any(isinf(tapIllum)) &&
+			    !any(isnan(tapMoments)) && !any(isinf(tapMoments)) && tapMoments.b >= 1.0)
+			{
+				prevIllumSum += tapIllum.rgb * tapW;
+				prevMomentsSum += tapMoments.rg * tapW;
+				prevHistorySum += tapMoments.b * tapW;
+				weightSum += tapW;
+			}
+		}
+	}
+
+	bool historyValid = (weightSum > 1e-4);
 
 	float currLum = luminance(currIllum);
 	vec2 currMoments = vec2(currLum, currLum * currLum);
@@ -122,15 +141,16 @@ void main()
 
 	if (historyValid)
 	{
-		vec4 prevIllumSample = texture(t_prevIllum, prevUV);
-		vec3 clampedPrevColor = clamp(prevIllumSample.rgb, boxMin, boxMax);
-		vec4 prevMomentsSample = texture(t_prevMoments, prevUV);
+		vec3 prevIllum = prevIllumSum / weightSum;
+		vec2 prevMoments = prevMomentsSum / weightSum;
+		float prevHistory = prevHistorySum / weightSum;
 
-		historyLength = min(prevMomentsSample.b + 1.0, u_maxHistory);
+		historyLength = min(prevHistory + 1.0, u_maxHistory);
 		float alpha = max(u_alpha, 1.0 / historyLength);
 
-		integratedIllum = mix(clampedPrevColor, currIllum, alpha);
-		integratedMoments = mix(prevMomentsSample.rg, currMoments, alpha);
+		// Accumulate the same input signal in the color and the moments.
+		integratedIllum = mix(prevIllum, currIllum, alpha);
+		integratedMoments = mix(prevMoments, currMoments, alpha);
 	}
 	else
 	{
@@ -142,11 +162,35 @@ void main()
 	float variance = max(0.0, integratedMoments.y - integratedMoments.x * integratedMoments.x);
 	if (historyLength < 4.0)
 	{
-		float spatialVar = dot(sigma * sigma, vec3(0.3333));
-		variance = max(variance, spatialVar);
+		// Estimate luminance variance from nearby geometry while history is short.
+		vec2 spatialMoments = vec2(0.0);
+		float spatialWeight = 0.0;
+		ivec2 pixel = ivec2(gl_FragCoord.xy);
+		for (int dy = -3; dy <= 3; ++dy)
+		{
+			for (int dx = -3; dx <= 3; ++dx)
+			{
+				ivec2 tap = pixel + ivec2(dx, dy);
+				if (any(lessThan(tap, ivec2(0))) || any(greaterThanEqual(tap, ivec2(u_resolution)))) continue;
+				vec4 normal = texelFetch(t_currNormal, tap, 0);
+				if (normal.a < 0.5) continue;
+				vec3 position = texelFetch(t_currWorldPos, tap, 0).xyz;
+				vec3 color = texelFetch(t_currIllum, tap, 0).rgb;
+				if (any(isnan(color)) || any(isinf(color))) continue;
+				float planeDist = abs(dot(currNormal, currWorldPos - position));
+				float weight = pow(max(dot(currNormal, normal.xyz), 0.0), 32.0);
+				weight *= exp(-planeDist / 0.15 - float(dx * dx + dy * dy) / 8.0);
+				float lum = luminance(color);
+				spatialMoments += vec2(lum, lum * lum) * weight;
+				spatialWeight += weight;
+			}
+		}
+		spatialMoments /= max(spatialWeight, 1e-5);
+		float spatialVariance = max(0.0, spatialMoments.y - spatialMoments.x * spatialMoments.x);
+		variance = max(variance, spatialVariance);
 	}
 
-	if (isnan(integratedIllum.r) || isnan(integratedIllum.g) || isnan(integratedIllum.b))
+	if (any(isnan(integratedIllum)) || any(isinf(integratedIllum)))
 	{
 		integratedIllum = currIllum;
 	}

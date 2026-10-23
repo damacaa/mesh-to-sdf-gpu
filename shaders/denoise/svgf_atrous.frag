@@ -21,13 +21,36 @@ float luminance(vec3 color)
 	return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+float prefilterVariance(ivec2 pixel, float fallback)
+{
+	// Smooth only the variance used by the luminance weight, at every wavelet scale.
+	const float gaussian[3] = float[3](0.25, 0.5, 0.25);
+	float sum = 0.0;
+	float weightSum = 0.0;
+	for (int y = -1; y <= 1; ++y)
+	{
+		for (int x = -1; x <= 1; ++x)
+		{
+			ivec2 tap = pixel + ivec2(x, y);
+			if (any(lessThan(tap, ivec2(0))) || any(greaterThanEqual(tap, ivec2(u_resolution)))) continue;
+			if (texelFetch(t_normal, tap, 0).a < 0.5) continue;
+			float variance = texelFetch(t_illumination, tap, 0).a;
+			if (isnan(variance) || isinf(variance) || variance < 0.0) continue;
+			float weight = gaussian[x + 1] * gaussian[y + 1];
+			sum += variance * weight;
+			weightSum += weight;
+		}
+	}
+	return weightSum > 0.0 ? sum / weightSum : fallback;
+}
+
 void main()
 {
 	vec4 centerIllumVar = texture(t_illumination, v_texCoord);
 	vec3 centerColor = centerIllumVar.rgb;
 	float centerVariance = centerIllumVar.a;
 
-	if (isnan(centerColor.r) || isnan(centerColor.g) || isnan(centerColor.b) || isinf(centerColor.r))
+	if (any(isnan(centerColor)) || any(isinf(centerColor)))
 	{
 		centerColor = vec3(0.0);
 	}
@@ -49,7 +72,7 @@ void main()
 
 	vec3 centerPos = texture(t_worldPos, v_texCoord).rgb;
 	float centerLum = luminance(centerColor);
-	float stdDev = sqrt(max(centerVariance, 1e-4));
+	float stdDev = sqrt(max(prefilterVariance(ivec2(gl_FragCoord.xy), centerVariance), 1e-4));
 
 	vec3 sumColor = vec3(0.0);
 	float sumVariance = 0.0;
@@ -80,7 +103,7 @@ void main()
 			vec3 tapColor = tapIllumVar.rgb;
 			float tapVariance = tapIllumVar.a;
 
-			if (isnan(tapColor.r) || isnan(tapColor.g) || isnan(tapColor.b) || isinf(tapColor.r))
+			if (any(isnan(tapColor)) || any(isinf(tapColor)))
 			{
 				continue;
 			}
@@ -119,7 +142,7 @@ void main()
 	vec3 filteredColor = sumColor / sumWeight;
 	float filteredVariance = sumVariance / (sumWeight * sumWeight);
 
-	if (isnan(filteredColor.r) || isnan(filteredColor.g) || isnan(filteredColor.b))
+	if (any(isnan(filteredColor)) || any(isinf(filteredColor)))
 	{
 		filteredColor = centerColor;
 	}

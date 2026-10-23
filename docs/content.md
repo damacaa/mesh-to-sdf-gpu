@@ -517,6 +517,7 @@ La Tabla 4 resume los objetivos de render múltiple (*Multiple Render Targets*, 
 | `m_temporalFbo[2]`| Color 0 | `m_temporalIllum` | `GL_RGBA16F` | RGB: Irradiancia integrada, A: Varianza temporal |
 | | Color 1 | `m_temporalMoments` | `GL_RGBA16F` | R: Momento 1, G: Momento 2, B: Longitud de historial |
 | `m_atrousPing/Pong`| Color 0 | `m_atrousPing/Pong`| `GL_RGBA16F` | RGB: Irradiancia filtrada, A: Varianza filtrada |
+| Sin FBO propio | Copia de textura | `m_filteredHistory` | `GL_RGBA16F` | RGB: Resultado de la primera iteración espacial, A: Varianza filtrada |
 
 *Fuente: elaboración propia.*
 
@@ -534,6 +535,7 @@ El shader `sdf_raymarching.frag` opera como un cuadrilátero a pantalla completa
 4. **Demodulación de albedo:** En modo SVGF, la radiancia acumulada se divide por el albedo del impacto primario:
    $$E = \frac{L}{\max(\rho, 0.05)}$$
    Esto separa la señal de baja frecuencia de la iluminación respecto a las altas frecuencias del material, facilitando un filtrado espacial homogéneo.
+5. **Muestreo estocástico mediante ruido azul espaciotemporal (STBN):** Se integraron texturas de NVIDIA STBN [9], [10] para reducir la energía del ruido en bajas frecuencias y facilitar su filtrado. Se cargan dos volúmenes `GL_RGBA8` de $128 \times 128 \times 64$ texeles y se avanza una capa temporal por fotograma, con repetición cada 64 fotogramas. Se asignan desplazamientos espaciales fijos mediante la secuencia $R_2$ a la selección de lóbulo, las direcciones difusa y especular, la consulta de material y cada fuente luminosa de cada rebote. Se consulta cada volumen mediante `texelFetch`, sin interpolación ni rotaciones de los valores muestreados. Se mantienen las mismas reglas de iluminación y limitación de radiancia en los modos PCG y STBN para permitir su comparación. La conservación del espectro de las muestras se verificó mediante análisis numérico; no se ha cuantificado todavía la reducción visual de la ebullición en las escenas.
 
 ## 4.4. Pase 3: Pipeline de reducción de ruido SVGF
 
@@ -545,11 +547,11 @@ $$\text{clip}_{\text{prev}} = \mathbf{V}\mathbf{P}_{\text{prev}} \cdot \begin{pm
 Una muestra histórica se considera válida únicamente si verifica simultáneamente:
 - Pertenencia a las coordenadas normalizadas de la ventana: $\text{uv}_{\text{prev}} \in [0, 1]^2$.
 - Coherencia geométrica de normales: $N_{\text{curr}} \cdot N_{\text{prev}} > 0.75$.
-- Coherencia en distancia planar: $|N_{\text{curr}} \cdot (p_{\text{curr}} - p_{\text{prev}})| < 0.25$.
+- Coherencia en distancia planar: $|N_{\text{curr}} \cdot (p_{\text{curr}} - p_{\text{prev}})| < 0.15$.
 - Continuidad de superficie frente al cielo: $\text{hit}_{\text{prev}} > 0.5$.
 
-### Recorte de historial (*Neighborhood Clamping*)
-Para erradicar estelas en giros bruscos de cámara o cambios abruptos de iluminación, se analizan los píxeles vecinos en una ventana de $3 \times 3$. Se calculan la media $\mu_1$ y la desviación estándar $\sigma = \sqrt{\mu_2 - \mu_1^2}$ del vecindario, restringiendo el color anterior dentro de una caja de confinamiento $[\mu_1 - 1.5\sigma, \mu_1 + 1.5\sigma]$. La muestra integrada se actualiza mediante un factor de mezcla exponencial gobernado por la longitud del historial $h$:
+### Acumulación de historial y estimación de varianza
+Se rechaza el historial tras un reinicio explícito, un cambio de escena o un redimensionado. Con la cámara inmóvil, se consulta el mismo píxel; durante el movimiento, se validan por separado las cuatro muestras de reproyección. También se rechazan las proyecciones situadas detrás de la cámara anterior. Se acumulan el color y los momentos de luminancia sin aplicarles recortes temporales distintos. Cuando se dispone de menos de cuatro fotogramas de historial, se complementa la varianza temporal con una estimación espacial bilateral de luminancia en un vecindario de $7 \times 7$. Se actualiza la muestra integrada mediante un factor de mezcla exponencial gobernado por la longitud del historial $h$:
 
 $$\alpha = \max\left(\alpha_{\text{base}}, \frac{1}{h}\right), \quad E_{\text{int}} = (1 - \alpha) E_{\text{hist}} + \alpha E_{\text{curr}}$$
 
@@ -559,8 +561,10 @@ El shader `svgf_atrous.frag` ejecuta cuatro iteraciones ping-pong sucesivas con 
 $$w(p, q) = w_h(p, q) \cdot w_n(p, q) \cdot w_z(p, q) \cdot w_l(p, q)$$
 
 - **Peso de normal:** $w_n(p, q) = (\max(0, N_p \cdot N_q))^{\sigma_n}$, donde $\sigma_n \approx 32.0$.
-- **Peso de profundidad planar:** $w_z(p, q) = \exp\left(-\frac{|N_p \cdot (p - q)|}{\sigma_z}\right)$, con $\sigma_z \approx 1.0$.
-- **Peso de luminancia adaptado por varianza:** $w_l(p, q) = \exp\left(-\frac{|l(p) - l(q)|}{\sigma_l \sqrt{\text{Var}(p)} + \epsilon}\right)$, con $\sigma_l \approx 4.0$.
+- **Peso de profundidad planar:** $w_z(p, q) = \exp\left(-\frac{|N_p \cdot (p - q)|}{\sigma_z}\right)$, con $\sigma_z \approx 0.1$.
+- **Peso de luminancia adaptado por varianza:** $w_l(p, q) = \exp\left(-\frac{|l(p) - l(q)|}{\sigma_l \sqrt{g_{3\times3}(\text{Var})(p)} + \epsilon}\right)$, con $\sigma_l \approx 4.0$.
+
+Se aplica un prefiltrado gaussiano de $3 \times 3$ a la varianza utilizada por el peso de luminancia. Se propaga por separado la varianza de cada muestra con los pesos espaciales al cuadrado. Se conserva el color de la primera iteración À-Trous en `m_filteredHistory` para la acumulación del fotograma siguiente, antes de reutilizar la textura de trabajo. Si se desactiva el filtrado espacial, se conserva el resultado temporal como historial.
 
 ## 4.5. Pase 4: Composición final e inspección diagnóstica
 
@@ -590,7 +594,7 @@ A lo largo de la implementación se identificaron y solventaron tres anomalías 
 1. **Corrección de líneas de contorno en el cielo:** Inicialmente, los rayos que alcanzaban la distancia máxima `u_far` eran clasificados erróneamente como superficies debido al escalado planar de la profundidad en direcciones oblicuas ($z_{\text{planar}} = u_{\text{far}} \cdot |\omega_z| < u_{\text{far}}$). Esto forzaba el cálculo de gradientes de distancia espurios en el aire y la demodulación sobre albedos de suelo lejanos. Se introdujo una condición estricta de acierto (`sdfHit = object < u_far && sceneSdf < eps`) que garantiza que los rayos que escapan al infinito preserven la radiancia limpia del cielo sin ser procesados por los filtros de superficie.
 2. **Erradicación del parpadeo en siluetas de mallas poligonales:** El muestreo continuo de las texturas del G-Buffer con coordenadas sujetas a perturbación estocástica de subpíxel (*ray jitter*) provocaba que, en las fronteras de los triángulos, la coordenada de muestreo cayera fuera del polígono hacia texeles no rasterizados (`vec4(0.0)`). Esto producía albedos y posiciones nulos, manifestados como un ribete negro parpadeante en la silueta. La sustitución sistemática de `texture()` por `texelFetch(..., ivec2(gl_FragCoord.xy), 0)` garantizó una indización discreta exacta por píxel, eliminando por completo cualquier sangrado con el color de fondo.
 3. **Protección contra singularidades y valores `NaN`:** Se incorporaron comprobaciones de longitud mínima antes de cada normalización vectorial (gradientes numéricos de normales $\nabla f(p)$, vectores de reflexión de dispersión especular y cálculo del vector medio $H = \text{normalize}(L - \omega)$), complementadas con guardas `isnan()` y `isinf()` que sustituyen inmediatamente cualquier indeterminación matemática por valores energéticos seguros.
-4. **Filtrado selectivo en el recorte temporal:** Se condicionó el bucle de vecindario $3 \times 3$ de `svgf_temporal.frag` para descartar muestras celestes (`tapNormal.a < 0.5`) al evaluar píxeles de superficie, impidiendo que la luminancia del cielo infle artificialmente la caja de varianza de los objetos.
+4. **Estimación de varianza con historial corto:** Se excluyen las muestras de cielo y los valores no finitos del vecindario espacial de luminancia. Se ponderan las muestras por la concordancia de normales, la distancia planar y la distancia en pantalla para reducir la mezcla entre superficies distintas.
 
 ---
 
@@ -699,6 +703,10 @@ Las fases inmediatas del proyecto se centrarán en los objetivos centrales de la
 [7] H. Dammertz, D. Sewtz, M. Hanika y H. P. A. Lensch, «Edge-avoiding À-Trous filtering for fast global illumination and image reconstruction», en *ACM SIGGRAPH 2010 Talks*, Association for Computing Machinery, Nueva York, Estados Unidos, 2010. doi: 10.1145/1837026.1837050.
 
 [8] B. Karis, «Real Shading in Unreal Engine 4», en *ACM SIGGRAPH 2013 Courses: Physically Based Shading in Theory and Practice*, 2013. Disponible en: `https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf`.
+
+[9] A. Wolfe, N. Morrical, T. Akenine-Möller y R. Ramamoorthi, «Spatiotemporal Blue Noise Masks», en *Eurographics Symposium on Rendering (EGSR) - Research Track*, Eurographics Association, 2022. doi: 10.2312/sr.20221161.
+
+[10] A. Wolfe, «Rendering in Real Time with Spatiotemporal Blue Noise Textures, Part 1», *NVIDIA Technical Blog*, 2022. Disponible en: `https://developer.nvidia.com/blog/rendering-in-real-time-with-spatiotemporal-blue-noise-textures-part-1/`.
 
 ---
 

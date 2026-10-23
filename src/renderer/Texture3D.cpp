@@ -1,6 +1,9 @@
 #include "renderer/Texture3D.h"
 
+#include <fstream>
+#include <iostream>
 #include <utility>
+#include <vector>
 
 namespace renderer
 {
@@ -48,6 +51,14 @@ namespace renderer
 
 	void Texture3D::allocate(int width, int height, int depth, GLenum internalFormat)
 	{
+		allocateWithData(width, height, depth, internalFormat, GL_RED, GL_FLOAT, nullptr, GL_LINEAR, GL_CLAMP_TO_EDGE);
+	}
+
+	void Texture3D::allocateWithData(int width, int height, int depth,
+	                                GLenum internalFormat, GLenum format, GLenum type,
+	                                const void* data,
+	                                GLenum filter, GLenum wrap)
+	{
 		dispose();
 
 		m_width = width;
@@ -58,15 +69,71 @@ namespace renderer
 		glGenTextures(1, &id);
 		glBindTexture(GL_TEXTURE_3D, id);
 
-		glTexImage3D(GL_TEXTURE_3D, 0, internalFormat, width, height, depth, 0, GL_RED, GL_FLOAT, nullptr);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage3D(GL_TEXTURE_3D, 0, internalFormat, width, height, depth, 0, format, type, data);
 
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, filter);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, filter);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, wrap);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, wrap);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, wrap);
 
 		glBindTexture(GL_TEXTURE_3D, 0);
+	}
+
+	bool Texture3D::loadFromFile(const std::string& filePath, int width, int height, int depth,
+	                             GLenum internalFormat, GLenum format, GLenum type,
+	                             GLenum filter, GLenum wrap)
+	{
+		std::ifstream file(filePath, std::ios::binary);
+		if (!file.is_open())
+		{
+			std::cerr << "Texture3D::loadFromFile: Failed to open file " << filePath << std::endl;
+			return false;
+		}
+
+		size_t channels = 4;
+		if (format == GL_RED)
+		{
+			channels = 1;
+		}
+		else if (format == GL_RG)
+		{
+			channels = 2;
+		}
+		else if (format == GL_RGB)
+		{
+			channels = 3;
+		}
+		else if (format == GL_RGBA)
+		{
+			channels = 4;
+		}
+
+		size_t bytesPerChannel = 1;
+		if (type == GL_FLOAT)
+		{
+			bytesPerChannel = 4;
+		}
+		else if (type == GL_HALF_FLOAT)
+		{
+			bytesPerChannel = 2;
+		}
+
+		size_t expectedSize = static_cast<size_t>(width) * height * depth * channels * bytesPerChannel;
+		std::vector<unsigned char> buffer(expectedSize);
+		file.read(reinterpret_cast<char*>(buffer.data()), expectedSize);
+		std::streamsize bytesRead = file.gcount();
+		file.close();
+
+		if (bytesRead < static_cast<std::streamsize>(expectedSize))
+		{
+			std::cerr << "Texture3D::loadFromFile: Expected " << expectedSize << " bytes, read " << bytesRead << " from " << filePath << std::endl;
+			return false;
+		}
+
+		allocateWithData(width, height, depth, internalFormat, format, type, buffer.data(), filter, wrap);
+		return true;
 	}
 
 	void Texture3D::bind(GLuint unit) const

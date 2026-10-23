@@ -23,6 +23,13 @@ uniform float u_sdfTextureWorldSize;
 uniform vec3 u_sdfTextureOffset;
 uniform int u_sdfTextureMaterialId;
 
+// Spatiotemporal Blue Noise (STBN) textures
+uniform sampler3D t_stbn0;              // RGB: 3D vector, A: 1D scalar void-and-cluster
+uniform sampler3D t_stbn1;              // RG: 2D vector; BA: unused packed data
+uniform int u_enableBlueNoise;          // 0 = White Noise (PCG PRNG), 1 = STBN
+uniform int u_noiseFrameIndex;          // Continuously advancing noise frame index
+uniform int u_samplingSeed;            // Fixed stream offset for repeatable experiments
+
 // Path tracer settings
 uniform int u_frameCounter;
 uniform int u_rayBounces;
@@ -147,9 +154,46 @@ vec3 hash3(inout float seed)
 	return vec3(randomFloat(seed), randomFloat(seed), randomFloat(seed));
 }
 
-vec3 cosineSampleHemisphere(vec3 N, inout float seed)
+// Each bounce reserves domains for the lobe, diffuse direction, specular direction, material, and eight lights.
+const int NOISE_DOMAINS_PER_BOUNCE = 12;
+const vec2 R2_SEQUENCE = vec2(0.7548777, 0.5698403);
+
+ivec3 noiseCoord(int domain)
 {
-	vec2 xi = hash2(seed);
+	// Keep each spatial offset fixed over time to preserve the STBN temporal sequence.
+	ivec2 offset = ivec2(floor(fract(float(domain) * R2_SEQUENCE) * 128.0));
+	uint stream = uint(u_samplingSeed) * 747796405u;
+	offset += ivec2(int(stream & 127u), int((stream >> 7u) & 127u));
+	ivec2 pixel = (ivec2(gl_FragCoord.xy) + offset) & ivec2(127);
+	return ivec3(pixel, u_noiseFrameIndex & 63);
+}
+
+vec4 decodeNoise(vec4 value)
+{
+	// Use bin centers so the normalized samples never reach zero or one.
+	return (value * 255.0 + 0.5) / 256.0;
+}
+
+float sampleNoise1(int domain, inout float seed)
+{
+	if (u_enableBlueNoise == 0) return randomFloat(seed);
+	return decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).w;
+}
+
+vec2 sampleNoise2(int domain, inout float seed)
+{
+	if (u_enableBlueNoise == 0) return hash2(seed);
+	return decodeNoise(texelFetch(t_stbn1, noiseCoord(domain), 0)).xy;
+}
+
+vec3 sampleNoise3(int domain, inout float seed)
+{
+	if (u_enableBlueNoise == 0) return hash3(seed);
+	return decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).xyz;
+}
+
+vec3 cosineSampleHemisphere(vec3 N, vec2 xi)
+{
 	float phi = 2.0 * PI * xi.x;
 	float cosTheta = sqrt(xi.y);
 	float sinTheta = sqrt(max(1.0 - xi.y, 0.0));
@@ -504,7 +548,8 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			fresnel = 0.0;
 		}
 
-		float randVal = hash2(seed).x;
+		int noiseDomain = bounce * NOISE_DOMAINS_PER_BOUNCE;
+		float randVal = sampleNoise1(noiseDomain, seed);
 		bool isSpecular = randVal < fresnel;
 
 		// Direct Lighting from all active lights
@@ -517,16 +562,18 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			float lightDist;
 			float attenuation = 1.0;
 
+			vec3 lightJitter = sampleNoise3(noiseDomain + 4 + i, seed);
+
 			if (light.type == 0) // Directional
 			{
-				L = normalize(light.direction + (vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0) * 0.05);
+				L = normalize(light.direction + (lightJitter * 2.0 - 1.0) * 0.05);
 				lightDist = u_far * 0.5;
 			}
 			else if (light.type == 1) // Point
 			{
 				vec3 lightVec = light.position - p;
 				lightDist = length(lightVec);
-				vec3 jitter = (vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0) * 0.25;
+				vec3 jitter = (lightJitter * 2.0 - 1.0) * 0.25;
 				L = normalize(lightVec + jitter);
 
 				float a = 3.0;
@@ -537,7 +584,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			{
 				vec3 lightVec = light.position - p;
 				lightDist = length(lightVec);
-				vec3 jitter = (vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0) * 0.15;
+				vec3 jitter = (lightJitter * 2.0 - 1.0) * 0.15;
 				L = normalize(lightVec + jitter);
 
 				float a = 3.0;
@@ -577,9 +624,12 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		}
 
 		// Indirect bounce
-		vec3 diffuseDir = cosineSampleHemisphere(N, seed);
+		vec2 diffuseXi = sampleNoise2(noiseDomain + 1, seed);
+		vec3 specJitter = sampleNoise3(noiseDomain + 2, seed);
+
+		vec3 diffuseDir = cosineSampleHemisphere(N, diffuseXi);
 		vec3 reflectDir = reflect(currentRd, N);
-		vec3 jVec = vec3(hash2(seed), hash2(seed).x) * 2.0 - 1.0;
+		vec3 jVec = specJitter * 2.0 - 1.0;
 		float jLen = length(jVec);
 		vec3 jitter = jLen > 1e-4 ? jVec / jLen : vec3(0.0);
 		vec3 sVec = reflectDir + jitter * currentRoughness;
@@ -631,7 +681,8 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			float bounceBlend = preBounceScene.z;
 			float bounceJitterMask = smoothstep(0.0, 0.5, bounceBlend);
 
-			vec3 bounceMaterialPos = p + (hash3(seed) - 0.5) * 0.04 * max(d, 1.0) * bounceJitterMask;
+			vec3 jitterVec = sampleNoise3((bounce + 1) * NOISE_DOMAINS_PER_BOUNCE + 3, seed);
+			vec3 bounceMaterialPos = p + (jitterVec - 0.5) * 0.04 * max(d, 1.0) * bounceJitterMask;
 			vec3 bounceScene = sceneSdf(bounceMaterialPos);
 			int bounceMatId = clamp(int(bounceScene.y), 0, 15);
 			vec3 bounceMaterial = getMaterial(bounceMaterialPos, bounceMatId);
@@ -694,7 +745,7 @@ HitData render(in vec2 uv)
 	vec3 fogColor = getFogColor(rd);
 
 	uint pixelIndex = uint(pixelCoord.x) + uint(pixelCoord.y) * uint(u_resolution.x);
-	uint temporalSeed = uint(u_frameCounter) ^ floatBitsToUint(u_time);
+	uint temporalSeed = uint(u_frameCounter) ^ floatBitsToUint(u_time) ^ (uint(u_samplingSeed) * 277803737u);
 	uint state = pixelIndex ^ (temporalSeed * 747796405u + 2891336453u);
 	pcg(state);
 	float seed = uintBitsToFloat(state);
@@ -734,7 +785,8 @@ HitData render(in vec2 uv)
 		vec3 preScene = sceneSdf(p);
 		float blendFactor = preScene.z;
 		float jitterMask = smoothstep(0.0, 0.5, blendFactor);
-		vec3 materialSamplePos = p + (hash3(seed) - 0.5) * 0.01 * max(object, 5.0) * jitterMask;
+		vec3 matJitter = sampleNoise3(3, seed);
+		vec3 materialSamplePos = p + (matJitter - 0.5) * 0.01 * max(object, 5.0) * jitterMask;
 
 		vec3 sceneResult = sceneSdf(materialSamplePos);
 		int materialId = int(sceneResult.y);
