@@ -330,185 +330,350 @@ int main(int argc, char* argv[])
 
 			ImGui::Separator();
 
-			if (ImGui::BeginChild("SettingsScrollArea", ImVec2(0.0f, 0.0f)))
+			if (ImGui::BeginTabBar("ControlsTabBar", ImGuiTabBarFlags_None))
 			{
-				if (ImGui::CollapsingHeader("Scene Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::BeginTabItem("Scene Settings"))
 				{
-					ImGui::SeparatorText("Scene Selection");
-					const char* sceneNames[] = {
-						"1. Cornell Box",
-						"2. Primitives Showcase",
-						"3. Hybrid Mesh + SDF",
-						"4. 3D Texture Only",
-						"5. 3D Texture Room"
-					};
-					int selectedScene = currentSceneIndex;
-					if (ImGui::Combo("Scene", &selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
+					if (ImGui::BeginChild("SceneTabScroll", ImVec2(0.0f, 0.0f)))
 					{
-						switchScene(selectedScene);
-					}
-					ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4, 5");
-
-					ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
-					if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
-					{
-						pipeline.resetAccumulation(true);
-					}
-
-					if (pipeline.getConfig().enableSdf3DTexture)
-					{
-						bool needsRegen = false;
-
-						const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives", "Room with Window" };
-						if (ImGui::Combo("Bake Mode", &pipeline.getConfig().sdfBakeMode, bakeModes, IM_ARRAYSIZE(bakeModes)))
+						ImGui::SeparatorText("Scene Selection");
+						const char* sceneNames[] = {
+							"1. Cornell Box",
+							"2. Primitives Showcase",
+							"3. Hybrid Mesh + SDF",
+							"4. 3D Texture Only",
+							"5. 3D Texture Room"
+						};
+						int selectedScene = currentSceneIndex;
+						if (ImGui::Combo("Scene", &selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
 						{
-							needsRegen = true;
+							switchScene(selectedScene);
 						}
+						ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4, 5");
 
-						const char* resOptions[] = { "32 x 32 x 32", "64 x 64 x 64", "128 x 128 x 128", "256 x 256 x 256" };
-						int currentResIdx = 1;
-						if (pipeline.getConfig().sdfTextureResolution <= 32) currentResIdx = 0;
-						else if (pipeline.getConfig().sdfTextureResolution <= 64) currentResIdx = 1;
-						else if (pipeline.getConfig().sdfTextureResolution <= 128) currentResIdx = 2;
-						else currentResIdx = 3;
-
-						if (ImGui::Combo("Resolution", &currentResIdx, resOptions, IM_ARRAYSIZE(resOptions)))
-						{
-							int resolutions[] = { 32, 64, 128, 256 };
-							pipeline.getConfig().sdfTextureResolution = resolutions[currentResIdx];
-							needsRegen = true;
-						}
-
-						if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 25.0f, "%.2f"))
-						{
-							needsRegen = true;
-						}
-
-						if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
+						ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
+						if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
 						{
 							pipeline.resetAccumulation(true);
 						}
 
-						if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
+						if (pipeline.getConfig().enableSdf3DTexture)
 						{
-							pipeline.generateSdf3DTexture();
-							pipeline.resetAccumulation(true);
-						}
+							bool needsRegen = false;
 
-						if (pipeline.getConfig().sdfBakeMode == 0)
-						{
-							ImGui::TextDisabled("Bake Shape: 1.0m diameter sphere");
-						}
-						else if (pipeline.getConfig().sdfBakeMode == 1)
-						{
-							ImGui::TextDisabled("Bake Shape: Scene 2 geometric primitives");
-						}
-						else if (pipeline.getConfig().sdfBakeMode == 2)
-						{
-							ImGui::TextDisabled("Bake Shape: Closed room with subtract cube window");
+							const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives", "Room with Window" };
+							if (ImGui::Combo("Bake Mode", &pipeline.getConfig().sdfBakeMode, bakeModes, IM_ARRAYSIZE(bakeModes)))
+							{
+								needsRegen = true;
+							}
+
+							const char* resOptions[] = { "32 x 32 x 32", "64 x 64 x 64", "128 x 128 x 128", "256 x 256 x 256" };
+							int currentResIdx = 1;
+							if (pipeline.getConfig().sdfTextureResolution <= 32) currentResIdx = 0;
+							else if (pipeline.getConfig().sdfTextureResolution <= 64) currentResIdx = 1;
+							else if (pipeline.getConfig().sdfTextureResolution <= 128) currentResIdx = 2;
+							else currentResIdx = 3;
+
+							if (ImGui::Combo("Resolution", &currentResIdx, resOptions, IM_ARRAYSIZE(resOptions)))
+							{
+								int resolutions[] = { 32, 64, 128, 256 };
+								pipeline.getConfig().sdfTextureResolution = resolutions[currentResIdx];
+								needsRegen = true;
+							}
+
+							if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 25.0f, "%.2f"))
+							{
+								needsRegen = true;
+							}
+
+							if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
+							{
+								pipeline.resetAccumulation(true);
+							}
+
+							if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
+							{
+								pipeline.generateSdf3DTexture();
+								pipeline.resetAccumulation(true);
+							}
+
+							if (pipeline.getConfig().sdfBakeMode == 0)
+							{
+								ImGui::TextDisabled("Bake Shape: 1.0m diameter sphere");
+							}
+							else if (pipeline.getConfig().sdfBakeMode == 1)
+							{
+								ImGui::TextDisabled("Bake Shape: Scene 2 geometric primitives");
+							}
+							else if (pipeline.getConfig().sdfBakeMode == 2)
+							{
+								ImGui::TextDisabled("Bake Shape: Closed room with subtract cube window");
+							}
 						}
 					}
+					ImGui::EndChild();
+					ImGui::EndTabItem();
 				}
 
-				if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::BeginTabItem("Render Settings"))
 				{
-					ImGui::SeparatorText("Path Tracer Settings");
-					if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
+					if (ImGui::BeginChild("RenderTabScroll", ImVec2(0.0f, 0.0f)))
 					{
-						pipeline.resetAccumulation(true);
-					}
-					if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
-					{
-						pipeline.resetAccumulation();
-					}
-					if (ImGui::Checkbox("Mesh Casts Shadows", &pipeline.getConfig().enableMeshShadows))
-					{
-						pipeline.resetAccumulation(true);
-					}
-
-					ImGui::SeparatorText("Denoising & Accumulation");
-					if (ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising))
-					{
-						pipeline.resetAccumulation(true);
-					}
-
-					if (ImGui::Checkbox("Spatiotemporal Blue Noise (STBN)", &pipeline.getConfig().enableBlueNoise))
-					{
-						pipeline.resetAccumulation(true);
-					}
-					if (ImGui::IsItemHovered())
-					{
-						ImGui::SetTooltip("Switch between Spatiotemporal Blue Noise (NVIDIA STBN) and White Noise (PCG).\nSTBN can reduce residual noise after filtering, especially while the camera is still.");
-					}
-
-					if (pipeline.getConfig().enableDenoising)
-					{
-						const char* debugViewNames[] = {
-							"Final Denoised",
-							"Raw 1-SPP Noisy",
-							"Denoised Irradiance",
-							"Estimated Variance",
-							"Surface Normals",
-							"Surface Albedo"
-						};
-						ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
-						if (ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5))
+						ImGui::SeparatorText("Path Tracer Settings");
+						if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
 						{
 							pipeline.resetAccumulation(true);
 						}
-						ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
-						ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
-						ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.01f, 1.0f, "%.2f");
-						ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
-						if (ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo))
-						{
-							pipeline.resetAccumulation(true);
-						}
-					}
-					else
-					{
-						if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
+						if (ImGui::SliderFloat("Contrast", &pipeline.getConfig().contrast, 1.0f, 3.0f))
 						{
 							pipeline.resetAccumulation();
 						}
-
-						int currentFrames = pipeline.getFrameCounter();
-						int maxFrames = pipeline.getConfig().maxAccumulationFrames;
-						float progress = static_cast<float>(std::min(currentFrames, maxFrames)) / static_cast<float>(maxFrames);
-
-						ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
-						ImGui::SameLine();
-						ImGui::Text("%d / %d", currentFrames, maxFrames);
-
-						if (ImGui::Button("Reset Accumulation"))
+						if (ImGui::Checkbox("Mesh Casts Shadows", &pipeline.getConfig().enableMeshShadows))
 						{
 							pipeline.resetAccumulation(true);
 						}
-					}
 
-					ImGui::SeparatorText("Post-Processing Anti-Aliasing (FXAA)");
-					ImGui::Checkbox("Enable FXAA", &pipeline.getConfig().enableFxaa);
-					if (pipeline.getConfig().enableFxaa)
-					{
-						const char* fxaaModes[] = { "Standard FXAA (Multi-Tap)", "Derivative FXAA (dFdx / dFdy)" };
-						ImGui::Combo("FXAA Algorithm", &pipeline.getConfig().fxaaMode, fxaaModes, IM_ARRAYSIZE(fxaaModes));
-						if (pipeline.getConfig().fxaaMode == 1)
+						ImGui::SeparatorText("Denoising & Accumulation");
+						if (ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising))
 						{
-							ImGui::SliderFloat("Derivative Threshold", &pipeline.getConfig().fxaaThreshold, 0.01f, 0.2f, "%.3f");
+							pipeline.resetAccumulation(true);
+						}
+						if (ImGui::Checkbox("Spatiotemporal Blue Noise (STBN)", &pipeline.getConfig().enableBlueNoise))
+						{
+							pipeline.resetAccumulation(true);
+						}
+						if (ImGui::IsItemHovered())
+						{
+							ImGui::SetTooltip("Switch between Spatiotemporal Blue Noise (NVIDIA STBN) and White Noise (PCG).\nSTBN can reduce residual noise after filtering, especially while the camera is still.");
+						}
+
+						if (pipeline.getConfig().enableDenoising)
+						{
+							const char* debugViewNames[] = {
+								"Final Denoised",
+								"Raw 1-SPP Noisy",
+								"Denoised Irradiance",
+								"Estimated Variance",
+								"Surface Normals",
+								"Surface Albedo"
+							};
+							ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
+							if (ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5))
+							{
+								pipeline.resetAccumulation(true);
+							}
+							ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
+							ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
+							ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.01f, 1.0f, "%.2f");
+							ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");
+							if (ImGui::Checkbox("Demodulate Albedo", &pipeline.getConfig().demodulateAlbedo))
+							{
+								pipeline.resetAccumulation(true);
+							}
+						}
+						else
+						{
+							if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
+							{
+								pipeline.resetAccumulation();
+							}
+
+							int currentFrames = pipeline.getFrameCounter();
+							int maxFrames = pipeline.getConfig().maxAccumulationFrames;
+							float progress = static_cast<float>(std::min(currentFrames, maxFrames)) / static_cast<float>(maxFrames);
+
+							ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+							ImGui::SameLine();
+							ImGui::Text("%d / %d", currentFrames, maxFrames);
+
+							if (ImGui::Button("Reset Accumulation"))
+							{
+								pipeline.resetAccumulation(true);
+							}
+						}
+
+						ImGui::SeparatorText("Post-Processing Anti-Aliasing (FXAA)");
+						ImGui::Checkbox("Enable FXAA", &pipeline.getConfig().enableFxaa);
+						if (pipeline.getConfig().enableFxaa)
+						{
+							const char* fxaaModes[] = { "Standard FXAA (Multi-Tap)", "Derivative FXAA (dFdx / dFdy)" };
+							ImGui::Combo("FXAA Algorithm", &pipeline.getConfig().fxaaMode, fxaaModes, IM_ARRAYSIZE(fxaaModes));
+							if (pipeline.getConfig().fxaaMode == 1)
+							{
+								ImGui::SliderFloat("Derivative Threshold", &pipeline.getConfig().fxaaThreshold, 0.01f, 0.2f, "%.3f");
+							}
+						}
+
+						ImGui::SeparatorText("Camera");
+						if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
+						{
+							pipeline.resetAccumulation();
+						}
+						ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
+						ImGui::Text("Hold Right Mouse Button to Look Around");
+						ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
+					}
+					ImGui::EndChild();
+					ImGui::EndTabItem();
+				}
+
+				if (ImGui::BeginTabItem("Lights"))
+				{
+					if (ImGui::BeginChild("LightsTabScroll", ImVec2(0.0f, 0.0f)))
+					{
+						auto& currentLights = scenes[currentSceneIndex].lights;
+
+						ImGui::SeparatorText("Scene Lights");
+						ImGui::Text("Active Lights: %d / 8", static_cast<int>(currentLights.size()));
+
+						if (currentLights.size() < 8)
+						{
+							if (ImGui::Button("+ Add Light"))
+							{
+								renderer::Light3D newLight;
+								newLight.type = 1; // Point light
+								newLight.position = camera.position + camera.orientation * 2.0f;
+								newLight.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+								newLight.color = glm::vec4(1.0f, 1.0f, 1.0f, 2.0f);
+								currentLights.push_back(newLight);
+								pipeline.resetAccumulation(true);
+							}
+						}
+						else
+						{
+							ImGui::BeginDisabled(true);
+							ImGui::Button("+ Add Light");
+							ImGui::EndDisabled();
+							ImGui::SameLine();
+							ImGui::TextDisabled("(Maximum 8 lights reached)");
+						}
+
+						ImGui::SameLine();
+						if (ImGui::Button("Reset to Defaults"))
+						{
+							currentLights = renderer::getPredefinedScenes()[currentSceneIndex].lights;
+							pipeline.resetAccumulation(true);
+						}
+
+						ImGui::Spacing();
+
+						if (currentLights.empty())
+						{
+							ImGui::TextDisabled("No lights in current scene. Click \"+ Add Light\" to add one.");
+						}
+
+						int lightToDelete = -1;
+						for (size_t i = 0; i < currentLights.size(); ++i)
+						{
+							auto& light = currentLights[i];
+							ImGui::PushID(static_cast<int>(i));
+
+							const char* typeNames[] = { "Directional", "Point", "Spot" };
+							const char* currentTypeName = (light.type <= 2) ? typeNames[light.type] : "Unknown";
+
+							char headerLabel[64];
+							std::snprintf(headerLabel, sizeof(headerLabel), "Light %d: %s###LightHeader_%d",
+								static_cast<int>(i + 1), currentTypeName, static_cast<int>(i));
+
+							if (ImGui::CollapsingHeader(headerLabel, ImGuiTreeNodeFlags_DefaultOpen))
+							{
+								int selectedType = static_cast<int>(light.type);
+								if (ImGui::Combo("Type", &selectedType, typeNames, IM_ARRAYSIZE(typeNames)))
+								{
+									light.type = static_cast<uint32_t>(selectedType);
+									pipeline.resetAccumulation(true);
+								}
+
+								if (ImGui::ColorEdit3("Color", glm::value_ptr(light.color)))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								if (ImGui::DragFloat("Intensity", &light.color.w, 0.05f, 0.0f, 50.0f, "%.2f"))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								if (light.type == 1 || light.type == 2)
+								{
+									if (ImGui::DragFloat3("Position", glm::value_ptr(light.position), 0.05f))
+									{
+										pipeline.resetAccumulation(true);
+									}
+
+									if (ImGui::Button("Set to Camera Position"))
+									{
+										light.position = camera.position;
+										pipeline.resetAccumulation(true);
+									}
+								}
+								else
+								{
+									ImGui::BeginDisabled(true);
+									ImGui::DragFloat3("Position (N/A)", glm::value_ptr(light.position), 0.05f);
+									ImGui::EndDisabled();
+									if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+									{
+										ImGui::SetTooltip("Directional lights do not use position.");
+									}
+								}
+
+								if (light.type == 0 || light.type == 2)
+								{
+									if (ImGui::DragFloat3("Direction", glm::value_ptr(light.direction), 0.02f, -1.0f, 1.0f, "%.2f"))
+									{
+										if (glm::length(light.direction) > 0.0001f)
+										{
+											light.direction = glm::normalize(light.direction);
+										}
+										pipeline.resetAccumulation(true);
+									}
+
+									if (ImGui::Button("Set to Camera Direction"))
+									{
+										light.direction = camera.orientation;
+										pipeline.resetAccumulation(true);
+									}
+								}
+								else
+								{
+									ImGui::BeginDisabled(true);
+									ImGui::DragFloat3("Direction (N/A)", glm::value_ptr(light.direction), 0.02f);
+									ImGui::EndDisabled();
+									if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+									{
+										ImGui::SetTooltip("Point lights radiate equally in all directions.");
+									}
+								}
+
+								ImGui::Spacing();
+								ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
+								ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.25f, 0.25f, 1.0f));
+								ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.1f, 0.1f, 1.0f));
+								if (ImGui::Button("Delete Light"))
+								{
+									lightToDelete = static_cast<int>(i);
+								}
+								ImGui::PopStyleColor(3);
+
+								ImGui::Spacing();
+							}
+
+							ImGui::PopID();
+						}
+
+						if (lightToDelete >= 0 && lightToDelete < static_cast<int>(currentLights.size()))
+						{
+							currentLights.erase(currentLights.begin() + lightToDelete);
+							pipeline.resetAccumulation(true);
 						}
 					}
-
-					ImGui::SeparatorText("Camera");
-					if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
-					{
-						pipeline.resetAccumulation();
-					}
-					ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
-					ImGui::Text("Hold Right Mouse Button to Look Around");
-					ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
+					ImGui::EndChild();
+					ImGui::EndTabItem();
 				}
+
+				ImGui::EndTabBar();
 			}
-			ImGui::EndChild();
 
 			ImGui::End();
 		}
