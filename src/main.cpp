@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 #include "renderer/Camera.h"
@@ -140,13 +141,19 @@ int main(int argc, char* argv[])
 	float moveSpeed = 4.0f;
 	bool takeScreenshotRequested = false;
 	std::string lastScreenshotPath;
+	bool showUi = true;
+	bool enableFpsLimit = false;
+	int targetFps = 60;
+	float smoothedWorkMs = 0.0f;
+	float smoothedIdleMs = 0.0f;
 
 	auto lastTime = std::chrono::high_resolution_clock::now();
 	auto startTime = lastTime;
 
 	while (running)
 	{
-		auto currentTime = std::chrono::high_resolution_clock::now();
+		auto frameStartTime = std::chrono::high_resolution_clock::now();
+		auto currentTime = frameStartTime;
 		float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
 		lastTime = currentTime;
 		double totalTime = std::chrono::duration<double>(currentTime - startTime).count();
@@ -190,6 +197,12 @@ int main(int argc, char* argv[])
 					break;
 
 				case SDL_EVENT_KEY_DOWN:
+					if (event.key.scancode == SDL_SCANCODE_F3 && !event.key.repeat)
+					{
+						showUi = !showUi;
+						break;
+					}
+
 					if (!io.WantCaptureKeyboard && !event.key.repeat)
 					{
 						int targetScene = -1;
@@ -215,7 +228,9 @@ int main(int argc, char* argv[])
 					{
 						windowWidth = newW;
 						windowHeight = newH;
-						pipeline.resize(windowWidth, windowHeight);
+						int targetRenderW = std::max(1, static_cast<int>(windowWidth * pipeline.getConfig().renderScale));
+						int targetRenderH = std::max(1, static_cast<int>(windowHeight * pipeline.getConfig().renderScale));
+						pipeline.resize(targetRenderW, targetRenderH);
 						camera.updateMatrix(windowWidth, windowHeight);
 					}
 					break;
@@ -284,12 +299,20 @@ int main(int argc, char* argv[])
 		ImGui::NewFrame();
 
 		// Debug Settings Window
+		if (showUi)
 		{
-			ImGui::SetNextWindowSize(ImVec2(400.0f, 600.0f), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowSizeConstraints(ImVec2(340.0f, 200.0f), ImVec2(FLT_MAX, FLT_MAX));
-			ImGui::Begin("Path Tracer Controls", nullptr);
+			constexpr float panelWidth = 400.0f;
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+			ImGui::SetNextWindowSize(ImVec2(panelWidth, io.DisplaySize.y), ImGuiCond_Always);
+			const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
+			ImGui::Begin("Path Tracer Controls", nullptr, windowFlags);
 
-			ImGui::Text("FPS: %.1f (%.2f ms)", io.Framerate, 1000.0f / (io.Framerate > 0.0f ? io.Framerate : 1.0f));
+			float displayFrameTimeMs = (enableFpsLimit && smoothedWorkMs > 0.0f)
+				? smoothedWorkMs
+				: (1000.0f / (io.Framerate > 0.0f ? io.Framerate : 1.0f));
+			ImGui::Text("FPS: %.1f (%.2f ms)", io.Framerate, displayFrameTimeMs);
+			ImGui::SameLine();
+			ImGui::TextDisabled("(F3 to hide)");
 
 			static float fpsHistory[120] = { 0.0f };
 			static int fpsOffset = 0;
@@ -304,6 +327,19 @@ int main(int argc, char* argv[])
 			maxFpsVal = std::ceil(maxFpsVal / 30.0f) * 30.0f;
 
 			ImGui::PlotLines("##FPSGraph", fpsHistory, IM_ARRAYSIZE(fpsHistory), fpsOffset, nullptr, 0.0f, maxFpsVal, ImVec2(0.0f, 45.0f));
+
+			ImGui::Checkbox("Limit FPS", &enableFpsLimit);
+			ImGui::SameLine();
+			if (!enableFpsLimit) ImGui::BeginDisabled(true);
+			ImGui::SetNextItemWidth(130.0f);
+			ImGui::SliderInt("##TargetFPS", &targetFps, 15, 240, "%d FPS");
+			if (!enableFpsLimit) ImGui::EndDisabled();
+
+			if (enableFpsLimit)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("(idle: %.1f ms)", smoothedIdleMs);
+			}
 
 			if (ImGui::Button("Take Screenshot"))
 			{
@@ -492,6 +528,27 @@ int main(int argc, char* argv[])
 							}
 						}
 
+						ImGui::SeparatorText("Resolution Scaling & Upscaling");
+						float scalePercent = pipeline.getConfig().renderScale * 100.0f;
+						if (ImGui::SliderFloat("Render Scale", &scalePercent, 10.0f, 100.0f, "%.0f%%"))
+						{
+							pipeline.getConfig().renderScale = scalePercent / 100.0f;
+							int targetRenderW = std::max(1, static_cast<int>(windowWidth * pipeline.getConfig().renderScale));
+							int targetRenderH = std::max(1, static_cast<int>(windowHeight * pipeline.getConfig().renderScale));
+							if (targetRenderW != static_cast<int>(pipeline.getConfig().renderWidth) ||
+								targetRenderH != static_cast<int>(pipeline.getConfig().renderHeight))
+							{
+								pipeline.resize(targetRenderW, targetRenderH);
+								pipeline.resetAccumulation(true);
+							}
+						}
+						ImGui::Text("Internal Resolution: %d x %d (Native: %d x %d)",
+							pipeline.getConfig().renderWidth, pipeline.getConfig().renderHeight,
+							windowWidth, windowHeight);
+
+						const char* upscaleFilters[] = { "Point (Nearest)", "Linear (Bilinear)" };
+						ImGui::Combo("Upscale Filtering", &pipeline.getConfig().upscaleFilter, upscaleFilters, IM_ARRAYSIZE(upscaleFilters));
+
 						ImGui::SeparatorText("Post-Processing Anti-Aliasing (FXAA)");
 						ImGui::Checkbox("Enable FXAA", &pipeline.getConfig().enableFxaa);
 						if (pipeline.getConfig().enableFxaa)
@@ -503,15 +560,161 @@ int main(int argc, char* argv[])
 								ImGui::SliderFloat("Derivative Threshold", &pipeline.getConfig().fxaaThreshold, 0.01f, 0.2f, "%.3f");
 							}
 						}
+					}
+					ImGui::EndChild();
+					ImGui::EndTabItem();
+				}
 
-						ImGui::SeparatorText("Camera");
-						if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f))
+				if (ImGui::BeginTabItem("Camera"))
+				{
+					if (ImGui::BeginChild("CameraTabScroll", ImVec2(0.0f, 0.0f)))
+					{
+						ImGui::SeparatorText("Camera Transform");
+						if (ImGui::DragFloat3("Position", glm::value_ptr(camera.position), 0.05f))
 						{
+							camera.updateVectors();
+							camera.updateMatrix(windowWidth, windowHeight);
 							pipeline.resetAccumulation();
 						}
-						ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f);
-						ImGui::Text("Hold Right Mouse Button to Look Around");
-						ImGui::Text("Controls: W/A/S/D to move, E/Q for Up/Down, Shift to boost");
+
+						bool orientationChanged = false;
+						if (ImGui::SliderFloat("Yaw", &camera.yaw, -360.0f, 360.0f, "%.1f°"))
+						{
+							orientationChanged = true;
+						}
+						if (ImGui::SliderFloat("Pitch", &camera.pitch, -89.0f, 89.0f, "%.1f°"))
+						{
+							orientationChanged = true;
+						}
+						if (orientationChanged)
+						{
+							camera.updateVectors();
+							camera.updateMatrix(windowWidth, windowHeight);
+							pipeline.resetAccumulation();
+						}
+
+						if (ImGui::Button("Reset to Scene Default"))
+						{
+							camera.position = scenes[currentSceneIndex].cameraPosition;
+							camera.yaw = scenes[currentSceneIndex].cameraYaw;
+							camera.pitch = scenes[currentSceneIndex].cameraPitch;
+							camera.updateVectors();
+							camera.updateMatrix(windowWidth, windowHeight);
+							pipeline.resetAccumulation();
+						}
+
+						ImGui::SeparatorText("Optics & Projection");
+						if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f, "%.1f°"))
+						{
+							camera.updateMatrix(windowWidth, windowHeight);
+							pipeline.resetAccumulation();
+						}
+						if (ImGui::DragFloat("Near Plane", &camera.nearPlane, 0.01f, 0.01f, 5.0f, "%.2f m"))
+						{
+							camera.updateMatrix(windowWidth, windowHeight);
+							pipeline.resetAccumulation();
+						}
+						if (ImGui::DragFloat("Far Plane", &camera.farPlane, 1.0f, 10.0f, 1000.0f, "%.1f m"))
+						{
+							camera.updateMatrix(windowWidth, windowHeight);
+							pipeline.resetAccumulation();
+						}
+
+						ImGui::SeparatorText("Navigation & Speed");
+						ImGui::SliderFloat("Move Speed", &moveSpeed, 1.0f, 20.0f, "%.1f m/s");
+						ImGui::Spacing();
+						ImGui::TextDisabled("Controls:");
+						ImGui::BulletText("Hold Right Mouse Button: Look around");
+						ImGui::BulletText("W / A / S / D: Move horizontally");
+						ImGui::BulletText("E / Space: Move up");
+						ImGui::BulletText("Q / Left Ctrl: Move down");
+						ImGui::BulletText("Left Shift: Boost speed");
+					}
+					ImGui::EndChild();
+					ImGui::EndTabItem();
+				}
+
+				if (ImGui::BeginTabItem("Materials"))
+				{
+					if (ImGui::BeginChild("MaterialsTabScroll", ImVec2(0.0f, 0.0f)))
+					{
+						auto& currentMaterials = scenes[currentSceneIndex].materials;
+
+						ImGui::SeparatorText("Scene Materials");
+
+						if (ImGui::Button("Reset to Defaults"))
+						{
+							currentMaterials = renderer::getPredefinedScenes()[currentSceneIndex].materials;
+							pipeline.resetAccumulation(true);
+						}
+
+						static bool showAllSlots = false;
+						ImGui::SameLine();
+						ImGui::Checkbox("Show All 16 Slots", &showAllSlots);
+
+						ImGui::Spacing();
+
+						for (size_t i = 0; i < currentMaterials.size(); ++i)
+						{
+							auto& mat = currentMaterials[i];
+							if (mat.name.empty() && !showAllSlots)
+							{
+								continue;
+							}
+
+							ImGui::PushID(static_cast<int>(i));
+
+							char headerLabel[80];
+							std::snprintf(headerLabel, sizeof(headerLabel), "[%d] %s###MaterialHeader_%d",
+								static_cast<int>(i), mat.name.empty() ? "(Unused Slot)" : mat.name.c_str(), static_cast<int>(i));
+
+							if (ImGui::CollapsingHeader(headerLabel, ImGuiTreeNodeFlags_DefaultOpen))
+							{
+								if (ImGui::ColorEdit3("Color", glm::value_ptr(mat.color)))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								if (ImGui::SliderFloat("Metallic", &mat.metallic, 0.0f, 1.0f, "%.2f"))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								if (ImGui::SliderFloat("Roughness", &mat.roughness, 0.0f, 1.0f, "%.2f"))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								if (ImGui::DragFloat("Emission", &mat.emission, 0.1f, 0.0f, 50.0f, "%.2f"))
+								{
+									pipeline.resetAccumulation(true);
+								}
+
+								const char* patternNames[] = { "None", "Checkers", "Perlin Noise", "Waves" };
+								int patternIdx = static_cast<int>(mat.pattern);
+								if (ImGui::Combo("Pattern", &patternIdx, patternNames, IM_ARRAYSIZE(patternNames)))
+								{
+									mat.pattern = static_cast<renderer::MaterialPattern>(patternIdx);
+									pipeline.resetAccumulation(true);
+								}
+
+								if (mat.pattern != renderer::MaterialPattern::None)
+								{
+									if (ImGui::ColorEdit3("Secondary Color", glm::value_ptr(mat.secondaryColor)))
+									{
+										pipeline.resetAccumulation(true);
+									}
+									if (ImGui::SliderFloat("Pattern Scale", &mat.patternScale, 0.1f, 20.0f, "%.2f"))
+									{
+										pipeline.resetAccumulation(true);
+									}
+								}
+
+								ImGui::Spacing();
+							}
+
+							ImGui::PopID();
+						}
 					}
 					ImGui::EndChild();
 					ImGui::EndTabItem();
@@ -679,7 +882,7 @@ int main(int argc, char* argv[])
 		}
 
 		// Render Pipeline
-		pipeline.render(camera, totalTime, scenes[currentSceneIndex]);
+		pipeline.render(camera, totalTime, scenes[currentSceneIndex], windowWidth, windowHeight);
 
 		// Screenshot capture
 		if (takeScreenshotRequested)
@@ -735,6 +938,50 @@ int main(int argc, char* argv[])
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		SDL_GL_SwapWindow(window);
+
+		if (enableFpsLimit && targetFps > 0)
+		{
+			glFinish();
+			auto workEndTime = std::chrono::high_resolution_clock::now();
+			double targetSec = 1.0 / static_cast<double>(targetFps);
+
+			auto now = workEndTime;
+			double elapsed = std::chrono::duration<double>(now - frameStartTime).count();
+			while (elapsed < targetSec)
+			{
+				double remaining = targetSec - elapsed;
+				if (remaining > 0.002)
+				{
+					SDL_Delay(static_cast<uint32_t>((remaining - 0.0015) * 1000.0));
+				}
+				else
+				{
+					std::this_thread::yield();
+				}
+				now = std::chrono::high_resolution_clock::now();
+				elapsed = std::chrono::duration<double>(now - frameStartTime).count();
+			}
+
+			auto frameEndTime = now;
+			double totalSec = std::chrono::duration<double>(frameEndTime - frameStartTime).count();
+			double idleSec = std::chrono::duration<double>(frameEndTime - workEndTime).count();
+			if (idleSec < 0.0) idleSec = 0.0;
+			double workSec = totalSec - idleSec;
+			if (workSec < 0.0) workSec = 0.0;
+
+			float workMs = static_cast<float>(workSec * 1000.0);
+			float idleMs = static_cast<float>(idleSec * 1000.0);
+			smoothedWorkMs = (smoothedWorkMs <= 0.0f) ? workMs : (smoothedWorkMs * 0.90f + workMs * 0.10f);
+			smoothedIdleMs = (smoothedIdleMs <= 0.0f) ? idleMs : (smoothedIdleMs * 0.90f + idleMs * 0.10f);
+		}
+		else
+		{
+			auto frameEndTime = std::chrono::high_resolution_clock::now();
+			double totalSec = std::chrono::duration<double>(frameEndTime - frameStartTime).count();
+			float totalMs = static_cast<float>(totalSec * 1000.0);
+			smoothedWorkMs = (smoothedWorkMs <= 0.0f) ? totalMs : (smoothedWorkMs * 0.90f + totalMs * 0.10f);
+			smoothedIdleMs = 0.0f;
+		}
 	}
 
 	// Cleanup

@@ -56,6 +56,10 @@ namespace renderer
 
 			// Noise Generation (White Noise vs Spatiotemporal Blue Noise)
 			bool enableBlueNoise = true;
+
+			// Resolution Scaling & Upscaling
+			float renderScale = 1.0f; // Scale percentage: 0.1f (10%) to 1.0f (100%)
+			int upscaleFilter = 1;    // 0 = Point (Nearest), 1 = Linear (Bilinear)
 		};
 
 
@@ -70,7 +74,7 @@ namespace renderer
 		void generateSdf3DTexture();
 		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
 
-		void render(const Camera& camera, double time, const SceneDefinition& scene);
+		void render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth = 0, int displayHeight = 0);
 		enum class LightingStage { Raw, Temporal, Filtered };
 		// Read linear RGB before contrast, gamma, and FXAA. Rows start at the bottom.
 		std::vector<glm::vec4> readLighting(LightingStage stage) const;
@@ -96,6 +100,7 @@ namespace renderer
 		Shader m_atrousShader;
 		Shader m_resolveShader;
 		Shader m_fxaaShader;
+		Shader m_blitShader;
 		ComputeShader m_sdfComputeShader;
 
 		// 3D SDF volume textures per scene

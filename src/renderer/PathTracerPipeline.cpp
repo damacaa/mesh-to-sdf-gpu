@@ -18,6 +18,7 @@ namespace renderer
 		m_atrousShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_atrous.frag");
 		m_resolveShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/linear_to_srgb.frag");
 		m_fxaaShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/fxaa.frag");
+		m_blitShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/blit.frag");
 		m_sdfComputeShader = ComputeShader(shadersRoot + "/compute/generate_3d_sdf.comp");
 
 		if (m_config.enableAntialiasing)
@@ -344,7 +345,7 @@ namespace renderer
 		generateSdf3DTexture(m_currentSceneIndex);
 	}
 
-	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene)
+	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth, int displayHeight)
 	{
 		m_noiseFrameCounter = (m_noiseFrameCounter + 1) & 63;
 
@@ -373,6 +374,7 @@ namespace renderer
 		// -------------------------------------------------------------
 		// 1. GBuffer Rasterization Pass (Mesh geometry)
 		// -------------------------------------------------------------
+		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
 		m_gbufferFbo.bind();
 
 		const GLenum drawBuffers[4] = {
@@ -741,12 +743,12 @@ namespace renderer
 		glEnable(GL_DEPTH_TEST);
 
 		// -------------------------------------------------------------
-		// 5. Post-Processing Anti-Aliasing (FXAA) / Final Screen Blit
+		// 5. Post-Processing Anti-Aliasing (FXAA)
 		// -------------------------------------------------------------
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		m_outputFbo.bind();
 		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
-		glDrawBuffer(GL_BACK);
-		glReadBuffer(GL_BACK);
+		const GLenum singleBuf[1] = { GL_COLOR_ATTACHMENT0 };
+		glDrawBuffers(1, singleBuf);
 
 		m_fxaaShader.use();
 		m_fxaaShader.setUniform("t_screen", 0);
@@ -755,6 +757,28 @@ namespace renderer
 		m_fxaaShader.setUniform("u_fxaaMode", m_config.fxaaMode);
 		m_fxaaShader.setUniform("u_edgeThreshold", m_config.fxaaThreshold);
 		m_fxaaShader.setUniform("u_texelSize", glm::vec2(1.0f / m_config.renderWidth, 1.0f / m_config.renderHeight));
+
+		glDisable(GL_DEPTH_TEST);
+		m_quad.draw();
+		glEnable(GL_DEPTH_TEST);
+
+		// -------------------------------------------------------------
+		// 6. Final Upscale & Screen Presentation Pass
+		// -------------------------------------------------------------
+		int targetWidth = (displayWidth > 0) ? displayWidth : static_cast<int>(m_config.renderWidth);
+		int targetHeight = (displayHeight > 0) ? displayHeight : static_cast<int>(m_config.renderHeight);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, targetWidth, targetHeight);
+		glDrawBuffer(GL_BACK);
+
+		m_outputTexture.bind(0);
+		GLint upscaleFilterMode = (m_config.upscaleFilter == 1) ? GL_LINEAR : GL_NEAREST;
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, upscaleFilterMode);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, upscaleFilterMode);
+
+		m_blitShader.use();
+		m_blitShader.setUniform("t_texture", 0);
 
 		glDisable(GL_DEPTH_TEST);
 		m_quad.draw();

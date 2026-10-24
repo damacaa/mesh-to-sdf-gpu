@@ -46,51 +46,51 @@ namespace renderer
 
 			// GLSL injected code for Cornell Box shapes
 			cornell.glslShapesCode = R"(
-	// Floor
-	{
-		float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Ceiling
-	{
-		float d = fPlane(p, vec3(0.0, -1.0, 0.0), 4.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Back wall
-	{
-		float d = fPlane(p, vec3(0.0, 0.0, 1.0), 2.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Left wall (Red)
-	{
-		float d = fPlane(p, vec3(1.0, 0.0, 0.0), 2.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 1; }
-	}
-	// Right wall (Green)
-	{
-		float d = fPlane(p, vec3(-1.0, 0.0, 0.0), 2.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 2; }
-	}
-	// Ceiling light fixture
-	{
-		float d = fBox(p - vec3(0.0, 3.96, 0.0), vec3(0.5, 0.04, 0.5));
-		if (d < minDist) { minDist = d; finalMaterialId = 3; }
-	}
-	// Tall box (rotated)
-	{
-		vec3 pt = p - vec3(-0.65, 1.2, -0.6);
-		pR(pt.xz, 0.35);
-		float d = fBox(pt, vec3(0.55, 1.2, 0.55));
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Short box (rotated)
-	{
-		vec3 ps = p - vec3(0.65, 0.6, 0.3);
-		pR(ps.xz, -0.32);
-		float d = fBox(ps, vec3(0.55, 0.6, 0.55));
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-)";
+				// Floor
+				{
+					float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Ceiling
+				{
+					float d = fPlane(p, vec3(0.0, -1.0, 0.0), 4.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Back wall
+				{
+					float d = fPlane(p, vec3(0.0, 0.0, 1.0), 2.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Left wall (Red)
+				{
+					float d = fPlane(p, vec3(1.0, 0.0, 0.0), 2.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 1; }
+				}
+				// Right wall (Green)
+				{
+					float d = fPlane(p, vec3(-1.0, 0.0, 0.0), 2.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 2; }
+				}
+				// Ceiling light fixture
+				{
+					float d = fBox(p - vec3(0.0, 3.96, 0.0), vec3(0.5, 0.04, 0.5));
+					if (d < minDist) { minDist = d; finalMaterialId = 3; }
+				}
+				// Tall box (rotated)
+				{
+					vec3 pt = p - vec3(-0.65, 1.2, -0.6);
+					pR(pt.xz, 0.35);
+					float d = fBox(pt, vec3(0.55, 1.2, 0.55));
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Short box (rotated)
+				{
+					vec3 ps = p - vec3(0.65, 0.6, 0.3);
+					pR(ps.xz, -0.32);
+					float d = fBox(ps, vec3(0.55, 0.6, 0.55));
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+			)";
 
 			cornell.materials.resize(16);
 			// Mat 0: White diffuse walls / boxes
@@ -124,17 +124,17 @@ namespace renderer
 
 			// Sun light: Directional light with intensity 0 disables sky illumination (matching weird-engine)
 			cornell.lights.push_back({
-					.type = 0, // Directional light
-					.position = glm::vec3(0.0f, 0.0f, 0.0f),
-					.direction = glm::vec3(0.0f, -1.0f, 0.0f),
-					.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f) // w = 0.0 turns off sky
+				.type = 0, // Directional light
+				.position = glm::vec3(0.0f, 0.0f, 0.0f),
+				.direction = glm::vec3(0.0f, -1.0f, 0.0f),
+				.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f) // w = 0.0 turns off sky
 			});
 
 			// Ceiling point light
 			cornell.lights.push_back({.type = 1, // Point light
-																.position = glm::vec3(0.0f, 3.85f, 0.0f),
-																.direction = glm::vec3(0.0f, -1.0f, 0.0f),
-																.color = glm::vec4(1.0f, 0.95f, 0.88f, 2.5f)});
+									  .position = glm::vec3(0.0f, 3.85f, 0.0f),
+									  .direction = glm::vec3(0.0f, -1.0f, 0.0f),
+									  .color = glm::vec4(1.0f, 0.95f, 0.88f, 2.5f)});
 
 			cornell.enableSdf3DTexture = true;
 			cornell.sdfTextureResolution = 64;
@@ -164,47 +164,47 @@ namespace renderer
 			primitives.sdfBakeMode = 1;
 
 			primitives.glslShapesCode = R"(
-	// Checkered ground plane
-	{
-		float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Metallic torus in center
-	{
-		vec3 pt = p - vec3(0.0, 1.5, 0.0);
-		pR(pt.xy, 0.4);
-		pR(pt.xz, u_time * 0.2);
-		float d = fTorus(pt, 0.35, 1.1);
-		if (d < minDist) { minDist = d; finalMaterialId = 4; }
-	}
-	// Golden sphere
-	{
-		float d = fSphere(p - vec3(-2.2, 1.0, -0.5), 1.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 5; }
-	}
-	// Smooth union of a box and sphere
-	{
-		vec3 pb = p - vec3(2.2, 1.0, -0.5);
-		float dBox = fBox(pb, vec3(0.7, 0.7, 0.7));
-		float dSph = fSphere(pb, 0.9);
-		float d = fOpUnionSoft(dBox, dSph, 0.3);
-		if (d < minDist) { minDist = d; finalMaterialId = 6; }
-	}
-	// Floating glowing sphere
-	{
-		float d = fSphere(p - vec3(0.0, 1.5, 0.0), 0.45);
-		if (d < minDist) { minDist = d; finalMaterialId = 7; }
-	}
-	// Columns in background
-	{
-		vec3 pc1 = p - vec3(-3.5, 2.5, -3.5);
-		float d1 = fCylinder(pc1, 0.4, 2.5);
-		vec3 pc2 = p - vec3(3.5, 2.5, -3.5);
-		float d2 = fCylinder(pc2, 0.4, 2.5);
-		float d = min(d1, d2);
-		if (d < minDist) { minDist = d; finalMaterialId = 8; }
-	}
-)";
+				// Checkered ground plane
+				{
+					float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Metallic torus in center
+				{
+					vec3 pt = p - vec3(0.0, 1.5, 0.0);
+					pR(pt.xy, 0.4);
+					pR(pt.xz, u_time * 0.2);
+					float d = fTorus(pt, 0.35, 1.1);
+					if (d < minDist) { minDist = d; finalMaterialId = 4; }
+				}
+				// Golden sphere
+				{
+					float d = fSphere(p - vec3(-2.2, 1.0, -0.5), 1.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 5; }
+				}
+				// Smooth union of a box and sphere
+				{
+					vec3 pb = p - vec3(2.2, 1.0, -0.5);
+					float dBox = fBox(pb, vec3(0.7, 0.7, 0.7));
+					float dSph = fSphere(pb, 0.9);
+					float d = fOpUnionSoft(dBox, dSph, 0.3);
+					if (d < minDist) { minDist = d; finalMaterialId = 6; }
+				}
+				// Floating glowing sphere
+				{
+					float d = fSphere(p - vec3(0.0, 1.5, 0.0), 0.45);
+					if (d < minDist) { minDist = d; finalMaterialId = 7; }
+				}
+				// Columns in background
+				{
+					vec3 pc1 = p - vec3(-3.5, 2.5, -3.5);
+					float d1 = fCylinder(pc1, 0.4, 2.5);
+					vec3 pc2 = p - vec3(3.5, 2.5, -3.5);
+					float d2 = fCylinder(pc2, 0.4, 2.5);
+					float d = min(d1, d2);
+					if (d < minDist) { minDist = d; finalMaterialId = 8; }
+				}
+			)";
 
 			primitives.materials.resize(16);
 			// Mat 0: Checkered floor
@@ -251,11 +251,11 @@ namespace renderer
 
 			// Directional sun light + point fill
 			primitives.lights.push_back({.type = 0,
-																	 .direction = glm::vec3(0.5f, -1.0f, -0.6f),
-																	 .color = glm::vec4(1.0f, 0.95f, 0.85f, 2.0f)});
+										 .direction = glm::vec3(0.5f, -1.0f, -0.6f),
+										 .color = glm::vec4(1.0f, 0.95f, 0.85f, 2.0f)});
 			primitives.lights.push_back({.type = 1,
-																	 .position = glm::vec3(0.0f, 1.5f, 0.0f),
-																	 .color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
+										 .position = glm::vec3(0.0f, 1.5f, 0.0f),
+										 .color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
 
 			scenes.push_back(primitives);
 		}
@@ -278,31 +278,31 @@ namespace renderer
 			hybrid.monkeyMaterialIndex = 9; // Matte monkey
 
 			hybrid.glslShapesCode = R"(
-	// Reflective floor
-	{
-		float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
-		if (d < minDist) { minDist = d; finalMaterialId = 0; }
-	}
-	// Pedestal beneath monkey
-	{
-		vec3 pp = p - vec3(0.0, 0.25, 0.0);
-		float d = fCylinder(pp, 1.2, 0.25);
-		if (d < minDist) { minDist = d; finalMaterialId = 10; }
-	}
-	// Surrounding glowing orbs that cast direct light and indirect color bleeding
-	{
-		float d1 = fSphere(p - vec3(-2.0, 1.5, -0.5), 0.4);
-		if (d1 < minDist) { minDist = d1; finalMaterialId = 11; }
+				// Reflective floor
+				{
+					float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
+					if (d < minDist) { minDist = d; finalMaterialId = 0; }
+				}
+				// Pedestal beneath monkey
+				{
+					vec3 pp = p - vec3(0.0, 0.25, 0.0);
+					float d = fCylinder(pp, 1.2, 0.25);
+					if (d < minDist) { minDist = d; finalMaterialId = 10; }
+				}
+				// Surrounding glowing orbs that cast direct light and indirect color bleeding
+				{
+					float d1 = fSphere(p - vec3(-2.0, 1.5, -0.5), 0.4);
+					if (d1 < minDist) { minDist = d1; finalMaterialId = 11; }
 
-		float d2 = fSphere(p - vec3(2.0, 1.5, -0.5), 0.4);
-		if (d2 < minDist) { minDist = d2; finalMaterialId = 12; }
-	}
-	// Back wall slab
-	{
-		float d = fBox(p - vec3(0.0, 2.5, -2.5), vec3(4.0, 2.5, 0.2));
-		if (d < minDist) { minDist = d; finalMaterialId = 13; }
-	}
-)";
+					float d2 = fSphere(p - vec3(2.0, 1.5, -0.5), 0.4);
+					if (d2 < minDist) { minDist = d2; finalMaterialId = 12; }
+				}
+				// Back wall slab
+				{
+					float d = fBox(p - vec3(0.0, 2.5, -2.5), vec3(4.0, 2.5, 0.2));
+					if (d < minDist) { minDist = d; finalMaterialId = 13; }
+				}
+			)";
 
 			hybrid.materials.resize(16);
 			// Mat 0: Checkered floor
@@ -348,15 +348,15 @@ namespace renderer
 
 			// Point light above the monkey
 			hybrid.lights.push_back({.type = 1,
-															 .position = glm::vec3(0.0f, 3.5f, 0.5f),
-															 .color = glm::vec4(1.0f, 0.95f, 0.9f, 2.5f)});
+									 .position = glm::vec3(0.0f, 3.5f, 0.5f),
+									 .color = glm::vec4(1.0f, 0.95f, 0.9f, 2.5f)});
 			// Colored fill point lights near the orbs
 			hybrid.lights.push_back({.type = 1,
-															 .position = glm::vec3(-2.0f, 1.5f, -0.5f),
-															 .color = glm::vec4(0.1f, 0.8f, 1.0f, 1.2f)});
+									 .position = glm::vec3(-2.0f, 1.5f, -0.5f),
+									 .color = glm::vec4(0.1f, 0.8f, 1.0f, 1.2f)});
 			hybrid.lights.push_back({.type = 1,
-															 .position = glm::vec3(2.0f, 1.5f, -0.5f),
-															 .color = glm::vec4(1.0f, 0.15f, 0.65f, 1.2f)});
+									 .position = glm::vec3(2.0f, 1.5f, -0.5f),
+									 .color = glm::vec4(1.0f, 0.15f, 0.65f, 1.2f)});
 
 			hybrid.enableSdf3DTexture = true;
 			hybrid.sdfTextureResolution = 64;
@@ -380,8 +380,8 @@ namespace renderer
 			textureOnly.renderMonkeyMesh = false;
 
 			textureOnly.glslShapesCode = R"(
-	// Empty scene - only the 3D volumetric SDF texture is evaluated
-)";
+					// Empty scene - only the 3D volumetric SDF texture is evaluated
+				)";
 
 			textureOnly.enableSdf3DTexture = true;
 			textureOnly.sdfTextureResolution = 128;
@@ -399,16 +399,16 @@ namespace renderer
 			textureOnly.materials[14].name = "3D SDF Material";
 			textureOnly.materials[14].color = glm::vec4(0.85f, 0.85f, 0.85f, 1.0f);
 			textureOnly.materials[14].roughness = 1.0f;
-			textureOnly.materials[14].metallic = 0.0f;
+			textureOnly.materials[14].metallic = 1.0f;
 
 			// Directional sun light for atmosphere sky and direct lighting
 			textureOnly.lights.push_back({.type = 0, // Directional light
-																		.direction = glm::normalize(glm::vec3(1.0f, 0.25f, 1.0f)),
-																		.color = glm::vec4(1.0f, 0.95f, 0.85f, 0.01f)});
+										  .direction = glm::normalize(glm::vec3(1.0f, 0.25f, 1.0f)),
+										  .color = glm::vec4(1.0f, 0.95f, 0.85f, 0.01f)});
 
 			textureOnly.lights.push_back({.type = 1, // Point fill light
-																		.position = glm::vec3(0.0f, 3.5f, 0.0f),
-																		.color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
+										  .position = glm::vec3(0.0f, 3.5f, 0.0f),
+										  .color = glm::vec4(1.0f, 0.4f, 0.15f, 1.5f)});
 
 			scenes.push_back(textureOnly);
 		}
@@ -448,8 +448,8 @@ namespace renderer
 
 			// Directional sun light positioned to shine through the window
 			roomScene.lights.push_back({.type = 0, // Directional light
-																	.direction = glm::normalize(glm::vec3(-0.35f, 0.6f, -0.7f)),
-																	.color = glm::vec4(1.0f, 0.95f, 0.85f, 2.5f)});
+										.direction = glm::normalize(glm::vec3(-0.35f, 0.6f, -0.7f)),
+										.color = glm::vec4(1.0f, 0.95f, 0.85f, 2.5f)});
 
 			scenes.push_back(roomScene);
 		}
