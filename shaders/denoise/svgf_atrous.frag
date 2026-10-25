@@ -14,6 +14,10 @@ uniform float u_phiNormal;        // Normal sensitivity (default ~32.0)
 uniform float u_phiDepth;         // Depth sensitivity (default ~1.0)
 uniform float u_phiLuminance;     // Luminance/variance sensitivity (default ~4.0)
 
+uniform sampler2D t_moments;      // B = temporal history length
+uniform float u_alpha;            // Temporal blend weight of settled pixels
+uniform float u_maxRadiusScale;   // Max radius multiplier for short history (<= 1 = off)
+
 const float kernelWeights[5] = float[5](0.0625, 0.25, 0.375, 0.25, 0.0625);
 
 float luminance(vec3 color)
@@ -74,6 +78,20 @@ void main()
 	float centerLum = luminance(centerColor);
 	float stdDev = sqrt(max(prefilterVariance(ivec2(gl_FragCoord.xy), centerVariance), 1e-4));
 
+	// Pixels with a short history have fewer samples. Widen their kernel so that
+	// they average about as many samples as a settled pixel.
+	int stepSize = u_stepSize;
+	if (u_maxRadiusScale > 1.0)
+	{
+		float history = max(texture(t_moments, v_texCoord).b, 1.0);
+		float settledAlpha = clamp(u_alpha, 1e-3, 1.0);
+		float pixelAlpha = max(settledAlpha, 1.0 / history);
+		float settledSamples = (2.0 - settledAlpha) / settledAlpha;
+		float pixelSamples = (2.0 - pixelAlpha) / pixelAlpha;
+		float radiusScale = clamp(sqrt(settledSamples / pixelSamples), 1.0, u_maxRadiusScale);
+		stepSize = max(1, int(round(float(u_stepSize) * radiusScale)));
+	}
+
 	vec3 sumColor = vec3(0.0);
 	float sumVariance = 0.0;
 	float sumWeight = 0.0;
@@ -82,7 +100,7 @@ void main()
 	{
 		for (int dx = -2; dx <= 2; ++dx)
 		{
-			vec2 offset = vec2(float(dx), float(dy)) * float(u_stepSize) / u_resolution;
+			vec2 offset = vec2(float(dx), float(dy)) * float(stepSize) / u_resolution;
 			vec2 tapUV = v_texCoord + offset;
 
 			if (tapUV.x < 0.0 || tapUV.x > 1.0 || tapUV.y < 0.0 || tapUV.y > 1.0)

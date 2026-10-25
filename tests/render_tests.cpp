@@ -106,7 +106,21 @@ void testTemporal()
     shader.setUniform("u_prevViewProj", behindCamera);
     quad.draw();
     require(readPixel(1).z == 1.0f, "A point behind the previous camera retained history.");
-    std::cout << "PASS: temporal accumulation, reset, disocclusion, and behind-camera rejection\n";
+
+    // A fresh pixel must use its neighbors when the history fix is on.
+    shader.setUniform("u_resetHistory", 1);
+    fill(inputs[0], glm::vec4(1.0f));
+    const glm::vec4 bright(10.0f, 10.0f, 10.0f, 1.0f);
+    inputs[0].bind(0);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, width / 2, height / 2, 1, 1, GL_RGBA, GL_FLOAT, &bright.x);
+    shader.setUniform("u_historyFixFrames", 0.0f);
+    quad.draw();
+    require(readPixel().x == 10.0f, "A disabled history fix changed a fresh pixel.");
+    shader.setUniform("u_historyFixFrames", 4.0f);
+    quad.draw();
+    float fixedValue = readPixel().x;
+    require(fixedValue > 1.0f && fixedValue < 2.0f, "The history fix did not average a fresh pixel.");
+    std::cout << "PASS: temporal accumulation, reset, disocclusion, behind-camera rejection, and history fix\n";
 }
 
 void testVarianceFilter()
@@ -170,6 +184,7 @@ void testPipeline()
     config.renderHeight = height;
     config.enableBlueNoise = false;
     config.enableFxaa = false;
+    config.historyFixFrames = 0; // Fresh temporal lighting must equal raw lighting.
     auto scenes = renderer::getPredefinedScenes();
     auto scene = scenes.front();
     renderer::Camera camera(scene.cameraPosition);
@@ -235,33 +250,18 @@ void testPipeline()
         require(initial == reset, "Pipeline reset differs from a fresh temporal history.");
     }
 
-    // Compare the second temporal result with the expected blend of the first spatial result.
-    pipeline.getConfig().atrousIterations = 1;
-    pipeline.resetAccumulation(true);
-    auto filteredFirst = capture(pipeline, camera, scene, 1.0);
-    pipeline.getConfig().debugView = 1;
-    auto rawSecond = capture(pipeline, camera, scene, 2.0);
-    pipeline.getConfig().debugView = 0;
-    pipeline.resetAccumulation(true);
-    capture(pipeline, camera, scene, 1.0);
-    pipeline.getConfig().atrousIterations = 0;
-    auto temporalSecond = capture(pipeline, camera, scene, 2.0);
-    double totalError = 0.0;
-    int compared = 0;
-    for (size_t i = 0; i < temporalSecond.size(); ++i)
+    // The spatial filter must not feed back into the temporal history.
+    auto temporalAfterTwoFrames = [&](int iterations)
     {
-        // Exclude alpha and colors clipped by the resolve pass.
-        if (i % 4 == 3 || filteredFirst[i] < 10 || filteredFirst[i] > 245 ||
-            rawSecond[i] < 10 || rawSecond[i] > 245) continue;
-        double firstLinear = std::pow(filteredFirst[i] / 255.0, 1.0 / 0.4545);
-        double secondLinear = std::pow(rawSecond[i] / 255.0, 1.0 / 0.4545);
-        double expected = std::pow(0.5 * (firstLinear + secondLinear), 0.4545);
-        totalError += std::abs(temporalSecond[i] / 255.0 - expected);
-        ++compared;
-    }
-    require(compared > 100, "Too few pixels could verify spatial feedback.");
-    require(totalError / compared < 2.0 / 255.0, "The first spatial result did not enter temporal history.");
-    std::cout << "PASS: first-iteration feedback; mean error = " << totalError / compared << '\n';
+        pipeline.getConfig().atrousIterations = iterations;
+        pipeline.restartSampling(0);
+        capture(pipeline, camera, scene, 1.0);
+        capture(pipeline, camera, scene, 2.0);
+        return pipeline.readLighting(renderer::PathTracerPipeline::LightingStage::Temporal);
+    };
+    require(temporalAfterTwoFrames(1) == temporalAfterTwoFrames(0),
+        "The spatial result entered the temporal history.");
+    std::cout << "PASS: unfiltered temporal feedback\n";
 
     pipeline.getConfig().enableBlueNoise = true;
     pipeline.getConfig().debugView = 1;

@@ -588,8 +588,12 @@ namespace renderer
 			m_temporalShader.setUniform("u_prevViewProj", prevCamMatrix);
 			m_temporalShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
 			m_temporalShader.setUniform("u_alpha", m_config.temporalAlpha);
-			m_temporalShader.setUniform("u_maxHistory", float(std::max(m_config.maxHistoryFrames, 1)));
+			// The history cap must allow alpha to reach u_alpha.
+			float maxHistory = std::max(float(std::max(m_config.maxHistoryFrames, 1)),
+				std::ceil(1.0f / std::max(m_config.temporalAlpha, 1e-3f)));
+			m_temporalShader.setUniform("u_maxHistory", maxHistory);
 			m_temporalShader.setUniform("u_cameraMoved", cameraMoved ? 1 : 0);
+			m_temporalShader.setUniform("u_historyFixFrames", float(std::max(m_config.historyFixFrames, 0)));
 
 			// Current frame inputs
 			m_temporalShader.setUniform("t_currIllum", 0);
@@ -660,17 +664,14 @@ namespace renderer
 				m_atrousShader.setUniform("t_worldPos", 2);
 				m_primaryWorldPos.bind(2);
 
+				m_atrousShader.setUniform("t_moments", 3);
+				m_temporalMoments[m_temporalIdx].bind(3);
+				m_atrousShader.setUniform("u_alpha", m_config.temporalAlpha);
+				m_atrousShader.setUniform("u_maxRadiusScale", m_config.maxFilterRadiusScale);
+
 				glDisable(GL_DEPTH_TEST);
 				m_quad.draw();
 				glEnable(GL_DEPTH_TEST);
-
-				if (i == 0)
-				{
-					// Save the first spatial result before later iterations reuse the ping texture.
-					glCopyImageSubData(m_atrousPingTexture.id, GL_TEXTURE_2D, 0, 0, 0, 0,
-						m_filteredHistory.id, GL_TEXTURE_2D, 0, 0, 0, 0,
-						m_config.renderWidth, m_config.renderHeight, 1);
-				}
 
 				if (i % 2 == 0)
 				{
@@ -681,13 +682,10 @@ namespace renderer
 					finalFilteredTexture = &m_atrousPongTexture;
 				}
 			}
-			if (iterations == 0)
-			{
-				// Temporal-only mode still needs a valid color history.
-				glCopyImageSubData(m_temporalIllum[m_temporalIdx].id, GL_TEXTURE_2D, 0, 0, 0, 0,
-					m_filteredHistory.id, GL_TEXTURE_2D, 0, 0, 0, 0,
-					m_config.renderWidth, m_config.renderHeight, 1);
-			}
+			// Keep the unfiltered temporal result as history. Spatial blur must not feed back.
+			glCopyImageSubData(m_temporalIllum[m_temporalIdx].id, GL_TEXTURE_2D, 0, 0, 0, 0,
+				m_filteredHistory.id, GL_TEXTURE_2D, 0, 0, 0, 0,
+				m_config.renderWidth, m_config.renderHeight, 1);
 			m_historyValid = true;
 		}
 		else

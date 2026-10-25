@@ -22,6 +22,7 @@ uniform float u_alpha;             // Temporal blend weight (default ~0.15)
 uniform float u_maxHistory;        // Max history frames (default ~32.0)
 uniform int u_resetHistory;        // 1 rejects all previous samples
 uniform int u_cameraMoved;         // 1 if camera moved this frame, 0 if static
+uniform float u_historyFixFrames;  // Pixels with a shorter history get a spatial prefilter (0 = off)
 
 float luminance(vec3 color)
 {
@@ -160,9 +161,13 @@ void main()
 	}
 
 	float variance = max(0.0, integratedMoments.y - integratedMoments.x * integratedMoments.x);
-	if (historyLength < 4.0)
+	bool historyFix = historyLength < u_historyFixFrames;
+	if (historyLength < 4.0 || historyFix)
 	{
 		// Estimate luminance variance from nearby geometry while history is short.
+		// Disoccluded pixels also get a wider spatial average of the current frame (history fix).
+		int stride = historyFix ? 2 : 1;
+		vec3 spatialColor = vec3(0.0);
 		vec2 spatialMoments = vec2(0.0);
 		float spatialWeight = 0.0;
 		ivec2 pixel = ivec2(gl_FragCoord.xy);
@@ -170,7 +175,7 @@ void main()
 		{
 			for (int dx = -3; dx <= 3; ++dx)
 			{
-				ivec2 tap = pixel + ivec2(dx, dy);
+				ivec2 tap = pixel + ivec2(dx, dy) * stride;
 				if (any(lessThan(tap, ivec2(0))) || any(greaterThanEqual(tap, ivec2(u_resolution)))) continue;
 				vec4 normal = texelFetch(t_currNormal, tap, 0);
 				if (normal.a < 0.5) continue;
@@ -181,19 +186,37 @@ void main()
 				float weight = pow(max(dot(currNormal, normal.xyz), 0.0), 32.0);
 				weight *= exp(-planeDist / 0.15 - float(dx * dx + dy * dy) / 8.0);
 				float lum = luminance(color);
+				spatialColor += color * weight;
 				spatialMoments += vec2(lum, lum * lum) * weight;
 				spatialWeight += weight;
 			}
 		}
-		spatialMoments /= max(spatialWeight, 1e-5);
-		float spatialVariance = max(0.0, spatialMoments.y - spatialMoments.x * spatialMoments.x);
-		variance = max(variance, spatialVariance);
+		if (spatialWeight > 1e-5)
+		{
+			spatialColor /= spatialWeight;
+			spatialMoments /= spatialWeight;
+			if (historyLength < 4.0)
+			{
+				float spatialVariance = max(0.0, spatialMoments.y - spatialMoments.x * spatialMoments.x);
+				variance = max(variance, spatialVariance);
+			}
+			if (historyFix)
+			{
+				// Start from the spatial average and move to the temporal result as history grows.
+				float t = clamp((historyLength - 1.0) / max(u_historyFixFrames - 1.0, 1.0), 0.0, 1.0);
+				integratedIllum = mix(spatialColor, integratedIllum, t);
+			}
+		}
 	}
 
 	if (any(isnan(integratedIllum)) || any(isinf(integratedIllum)))
 	{
 		integratedIllum = currIllum;
 	}
+	// Convert the per-sample variance into the variance of the accumulated mean.
+	float effAlpha = historyValid ? max(u_alpha, 1.0 / historyLength) : 1.0;
+	variance *= effAlpha / (2.0 - effAlpha);
+
 	if (isnan(variance) || isinf(variance) || variance < 0.0)
 	{
 		variance = 0.0;

@@ -498,7 +498,9 @@ int main(int argc, char* argv[])
 							{
 								pipeline.resetAccumulation(true);
 							}
-							ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.02f, 0.5f, "%.2f");
+							ImGui::SliderFloat("Temporal Alpha", &pipeline.getConfig().temporalAlpha, 0.05f, 0.5f, "%.2f");
+							ImGui::SliderInt("History Fix Frames", &pipeline.getConfig().historyFixFrames, 0, 8);
+							ImGui::SliderFloat("Max Radius Scale", &pipeline.getConfig().maxFilterRadiusScale, 1.0f, 8.0f, "%.1f");
 							ImGui::SliderFloat("Normal Sensitivity", &pipeline.getConfig().phiNormal, 4.0f, 128.0f, "%.1f");
 							ImGui::SliderFloat("Depth Sensitivity", &pipeline.getConfig().phiDepth, 0.01f, 1.0f, "%.2f");
 							ImGui::SliderFloat("Luminance Sensitivity", &pipeline.getConfig().phiLuminance, 0.5f, 10.0f, "%.1f");

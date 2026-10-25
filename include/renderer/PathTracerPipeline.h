@@ -38,6 +38,8 @@ namespace renderer
 			float phiNormal = 32.0f;
 			float phiDepth = 0.1f;
 			float phiLuminance = 4.0f;
+			int historyFixFrames = 4;          // Frames of spatial prefilter after disocclusion (0 = off)
+			float maxFilterRadiusScale = 4.0f; // Max à-trous radius multiplier for short history (1 = off)
 			bool demodulateAlbedo = false;
 			int debugView = 0;
 
