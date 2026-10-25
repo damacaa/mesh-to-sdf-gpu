@@ -1,0 +1,74 @@
+Enunciado de la actividad (PEC 2)
+De cara a la redacción incremental de la memoria, en esta PEC se os pide que entreguéis la redacción de:
+
+Apartado 1, ya prácticamente definitivo y contemplando el feedback de vuestro tutor sobre la PEC 1.
+Apartado 2, con un estado del arte del tema del proyecto y/o un estudio de mercado. Éste es el apartado principal a trabajar en esta PEC.
+Apartado 3, describiendo ya claramente vuestra estrategia para llevar a cabo el proyecto, y si aplica, la estrategia de comercialización.
+En este caso, los principales ítems a resolver son:
+
+Estudio previo e identificación de los aspectos relevantes del problema y de su solución (e.g. estado del arte, estudio de mercado).
+Diseño de la propuesta.
+Elección de herramientas, tecnologías y fuentes de información adecuadas para el desarrollo del trabajo.
+En esta PEC también se tienen en cuenta aspectos vinculados al seguimiento de la planificación y el inicio de la ejecución del proyecto. Por tanto, en los TFs donde aplique, se considera que en la PEC 2 ya es necesario empezar a trabajar en aspectos vinculados a la implementación (e.g. desarrollo del código). Si es éste el caso, se  pide que en esta PEC, de cara a la realización de los aspectos relacionados con el desarrollo, os deis de alta en la plataforma github (u otra similar) y creéis un repositorio para vuestro código (aquí tenéis un pequeño tutorialLinks to an external site.).
+
+Si nunca habéis utilizado github, aprenderlo será uno de sus objetivos dentro de esta PEC. Es muy importante hacer un buen uso de la herramienta de control de versiones, características como el “gitignore” son críticas para mantener un entorno de trabajo usable durante el desarrollo de un videojuego. Existen varios front-ends gráficos para este tipo de herramientas. Algunos de los más populares son: SourceTreeLinks to an external site., ForkLinks to an external site., GitkrakenLinks to an external site., Github DesktopLinks to an external site. y Sublime mergeLinks to an external site.. Una vez hecho esto, podéis empezar a trabajar. No se espera un juego bien definido. Esta entrega servirá para definir y mejorar las ideas que se presentaron en la anterior PEC.
+
+Finalmente, os pedimos que grabéis un vídeo con una duración máxima de dos minutos explicando el funcionamiento de vuestro futuro juego y el aspecto que consideréis más destacado durante la realización de esta PEC. El vídeo lo puede colgar en la plataforma de distribución de vídeo que desee (eg YouTube), pero por la temática del proyecto, puede ser de interés echar un vistazo a Twitch, aunque sea principalmente una plataforma de streaming.
+
+Sobre el repositorio
+Durante todo el proyecto este repositorio será la referencia de vuestro producto y debe estar actualizado en todo momento (código fuente, recursos, meta-ficheros, etc.), de modo que vuestro tutor/a pueda saber en cualquier momento cuál es el estado del proyecto. Para poder abrir el proyecto en local debería ser tan sencillo como descargar los archivos del repositorio. Si es necesaria ninguna instrucción especial para descargarlo, compilarlo o ejecutarlo, explicadlo en un archivo README o similar.
+
+Evidentemente, no es necesario que el proyecto esté siempre en estado compilable o libre de errores, el flujo de trabajo debe ser totalmente natural para vosotros. Pero sí que es necesario garantizar que todo funcione en la fecha de una entrega (PECs, final). También, con fecha de cada entrega, debe existir en el repositorio un tag y una release con la versión binaria (ejecutable) del juego. Se debe poder descargar y ejecutar cada release directamente de forma sencilla y sin dar errores al ejecutar el juego.
+
+Por las características de un trabajo final, se parte de la base de que el repositorio y todo el trabajo que se está haciendo es de dominio público y bajo una licencia CC-BY-NC-ND (si bien se puede cambiar el tipo de licencia CC a otro que consideréis oportuna). Por lo tanto, sólo se necesita una cuenta gratuita. En cualquier caso, siempre es necesario garantizar que el equipo docente tenga acceso al proyecto durante su realización, asignando los accesos correspondientes.
+
+Sobre el estado del arte
+A continuación se presentan unas pautas que le intentarán guiar a la hora de redactar su PEC.
+
+¿Qué se entiende por Estado del Arte?
+
+El Estado del Arte (o de la Cuestión) es una parte introductoria de cualquier TFG, TFM o tesis doctoral. Su ubicación habitual dentro de la memoria es el segundo capítulo (después de la introducción). Sin embargo, puede estar fraccionado en más de un capítulo si el trabajo contiene diversas temáticas o si la temática requiere la fragmentación.
+
+Su contenido consiste en hacer un repaso sobre cómo otras personas (i.e. empresas, investigadores, etc.) han abordado el problema que se pretende resolver. Por eso, en el estado del arte se presentarán otros proyectos existentes que sean similares al nuestro. Por tanto, se puede ver como una fotografía del estado actual de un ámbito de conocimiento o problemática. Como puede verse, el Estado del Arte requiere una búsqueda exhaustiva de bibliografía existente.
+
+Este apartado del trabajo final es fundamental principalmente por los siguientes motivos:
+
+Permite tener una visión global de la situación actual de un ámbito de investigación/trabajo. Por tanto, facilita la definición del alcance del TFP, los objetivos, las limitaciones (o alcance), etc.
+La mayor tarea de búsqueda bibliográfica se realiza en esta fase del TFP (aunque no se acaba hasta depositar la memoria). En consecuencia, el trabajo realizado en esta fase también sirve en los siguientes capítulos de la memoria (o fases del producto), como son: el diseño, el desarrollo o las conclusiones y líneas de futuro. Gracias a la bibliografía pueden justificarse muchas de las decisiones que se han tomado a lo largo de la elaboración del TFP.
+Sirve de base para explicar, en las conclusiones y líneas de futuro del TFP, las aportaciones realizadas dentro de las áreas de conocimiento relacionadas con el TFP.
+Por último, cabe decir que no existe una plantilla estándar que sirva para estructurar el Estado del Arte. Por tanto, su organización depende mucho del autor del trabajo final así como del ámbito de conocimiento de que se trate.
+
+Pautas para hacer un buen Estado del Arte
+
+Hacer un buen Estado del Arte no es tarea fácil. Éste requiere muchas horas de búsqueda, lectura y comprensión. Se recomienda hacerse un mapa conceptual de lo que se va leyendo para tener todos los conceptos interrelacionados y, al mismo tiempo, definir la mejor estructura de apartados dentro del Estado del Arte.
+
+A la hora de buscar información sobre el área de conocimiento de vuestro TFM, recuerda que dispones de bibliotecas tanto presenciales como virtuales (p. ej.: la de la UOC), Internet (p. ej.: Google, Bing, Yippy , blogs, webs, etc.), libros, etc. Es importante, sobre todo en el caso de Internet, que elijas correctamente las palabras clave (keywords) que utilizas para realizar las búsquedas. Mantente atento/a, ya que, durante la búsqueda, algún libro, artículo, etc. te puede aportar nuevas palabras clave que podrás utilizar para mejorar los resultados que obtengas. Por tanto, es normal que en las primeras búsquedas encuentres cosas que están lejos (aunque relacionadas) con tu TFM y, poco a poco, con diversas iteraciones, mejores la calidad de los hallazgos. En este sentido, Yippy (https://yippy.com/Links to an external site.) es un buscador que clasifica los resultados en varias categorías, así que puedes utilizar estas categorías como palabras clave de una nueva búsqueda.
+
+A continuación os damos una lista de ítems que podéis usar para buscar (para cada uno de ello sse debe evaluar su idoneidad dentro de vuestro TFP):
+
+Subámbitos dentro del ámbito del TFP
+Éxitos conseguidos dentro del ámbito del TFP
+Problemas en los que se trabajan actualmente (y su grado de consecución)
+Posibles aplicaciones en un ámbito (p. ej.: medicina, educación, etc.)
+Usuarios finales a los que va destinado el producto/proyecto
+Software similar: programas privados, open source, APIs, etc.
+Hardware relacionado
+Los tipos de recursos que encontraréis serán:
+
+Trabajos Finales de la UOC u otra universidad
+Artículos de revistas y congresos científicos
+Libros
+Webs
+Software
+¿Cómo realizar búsquedas efectivas en Google?
+
+Al realizar búsquedas en Google, aparte de la posibilidad de realizar una búsqueda avanzada, recuerde algunas de sus funcionalidades:
+
+Encontrar un tipo de archivo concreto (pedido filetype:tipo_de archivo) >> natural language processing filetype:pdf
+Encontrar una web que contenga una cadena exacta, por ejemplo, un título (comando “”) >> “Identificación de emociones a partir de texto usando desambiguación semántica”
+Puedes combinar texto entre comillas y sin >> "student-centered learning" UOC Minguillón
+Bibliografía
+La bibliografía debe seguir alguno de los formatos estándares de citación (p.ej. estilo Harvard, Vancouver, Chicago, etc.).
+
+Criterios de valoración
+La entrega de esta PEC es obligatoria.

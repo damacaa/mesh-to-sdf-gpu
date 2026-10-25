@@ -1,0 +1,372 @@
+\documentclass{uoc_memoria}
+
+% Document Metadata
+\title{Título del Trabajo Final}
+\tfmsubtitle{Subtítulo (si hay)}
+\tfmstudent{Nombre Estudiante}
+\tfmprogram{Nombre del Programa}
+\tfmarea{Área del trabajo final}
+\tfmtutor{Nombre y apellidos}
+\tfmpra{Nombre y apellidos}
+\tfmdate{Fecha Entrega}
+\tfmlanguage{Catalán, castellano o inglés}
+
+% Ficha overrides for template replica (matches official docx guidance)
+\fichatitle{\guidanceinline{\textit{Que describa el trabajo}}}
+\fichastudent{\guidanceinline{\textit{Nombre y dos apellidos}}}
+\fichatutor{\guidanceinline{\textit{Nombre y dos apellidos}}}
+\fichapra{\guidanceinline{\textit{Nombre y dos apellidos}}}
+\fichadate{\guidanceinline{\textit{MM/AAAA}}}
+\fichaprogram{\guidanceinline{\textit{Programa de estudios}}}
+\fichaarea{\guidanceinline{\textit{Area de TF}}}
+\fichalanguage{\guidanceinline{\textit{Catalán, castellano o inglés}}}
+\fichakeywords{\guidanceblock{\textit{Máximo 3 palabras clave, validadas por el tutor/a del TF}}}
+
+\tfmabstractes{%
+  \guidanceblock{Máximo 250 palabras, con la finalidad, contexto de aplicación, metodología, resultados y conclusiones del trabajo}%
+}
+
+\tfmabstracten{%
+  \guidanceblock{A maximum of 250 words, detailing the purpose, context of application, methodology, results and conclusions of the work}%
+}
+
+\begin{document}
+
+% -------------------------------------------------------------
+% PORTADA
+% -------------------------------------------------------------
+\makecoverpage
+
+% -------------------------------------------------------------
+% LICENCIA
+% -------------------------------------------------------------
+\clearpage
+\pagestyle{licensepage}
+
+\vspace*{160mm}
+
+\noindent
+\includegraphics[height=1.0cm]{\templateassets/cc_by_nc_nd.png}\par
+\vspace{2mm}
+\noindent
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-SinObraDerivada 3.0 España de Creative Commons
+
+% -------------------------------------------------------------
+% LICENCIAS ALTERNATIVAS
+% -------------------------------------------------------------
+\clearpage
+\pagestyle{uocplain}
+
+\begin{center}
+  \textbf{\guidanceinline{Licencias alternativas}}\par
+  \textbf{\guidanceinline{(elegir alguna de las siguientes y sustituir la de la página anterior si aplica)}}
+\end{center}
+\vspace{4mm}
+
+\noindent
+\textbf{\guidanceinline{A) Creative Commons:}}\par
+\vspace{4mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by_nc_nd.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-SinObraDerivada \href{http://creativecommons.org/licenses/by-nc-nd/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{2mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by_nc_sa.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-CompartirIgual \href{http://creativecommons.org/licenses/by-nc-sa/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{2mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by_nc.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento-NoComercial \href{http://creativecommons.org/licenses/by-nc/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{2mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by_nd.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento-SinObraDerivada \href{http://creativecommons.org/licenses/by-nd/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{2mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by_sa.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento-CompartirIgual \href{http://creativecommons.org/licenses/by-sa/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{2mm}
+
+\noindent
+\includegraphics[height=0.8cm]{\templateassets/cc_by.png}\par
+\begin{guidancebox}
+Esta obra está sujeta a una licencia de Reconocimiento \href{http://creativecommons.org/licenses/by/3.0/es/}{3.0 España de Creative Commons}
+\end{guidancebox}
+\vspace{4mm}
+
+\noindent
+\textbf{\guidanceinline{B) GNU Free Documentation License (GNU FDL)}}\par
+\vspace{2mm}
+\begin{guidancebox}
+Copyright \copyright \quad AÑO \quad TU-NOMBRE.
+
+Permission is granted to copy, distribute and/or modify this document under the terms of the GNU Free Documentation License, Version 1.3 or any later version published by the Free Software Foundation; with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts. A copy of the license is included in the section entitled ``GNU Free Documentation License''.
+\end{guidancebox}
+\vspace{4mm}
+
+\noindent
+\textbf{\guidanceinline{C) Copyright}}\par
+\vspace{2mm}
+\begin{guidancebox}
+\copyright\ (el autor/a)
+
+Reservados todos los derechos. Está prohibido la reproducción total o parcial de esta obra por cualquier medio o procedimiento, comprendidos la impresión, la reprografía, el microfilme, el tratamiento informático o cualquier otro sistema, así como la distribución de ejemplares mediante alquiler y préstamo, sin la autorización escrita del autor o de los límites que autorice la Ley de Propiedad Intelectual.
+\end{guidancebox}
+
+% -------------------------------------------------------------
+% FICHA DEL TRABAJO FINAL
+% -------------------------------------------------------------
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\pagestyle{uocdefault}
+
+\makefichaproyecto
+
+% -------------------------------------------------------------
+% AGRADECIMIENTOS
+% -------------------------------------------------------------
+\clearpage
+\section*{Agradecimientos}
+
+\begin{guidancebox}
+Si se considera oportuno, mencionar a las personas, empresas o instituciones que hayan contribuido en la realización de este proyecto.
+\end{guidancebox}
+
+% -------------------------------------------------------------
+% DECLARACIÓN DE RECURSOS
+% -------------------------------------------------------------
+\clearpage
+\section*{Declaración de uso de recursos de terceros}
+
+\begin{guidancebox}
+En este apartado se debe declarar CLARAMENTE el uso de recursos de terceros en esta memoria: bibliotecas de software, recursos gráficos o sonoros, etc. En general, cualquier elemento del proyecto (software, partes de la memoria, vídeos, etc.) que no deba ser confundido como una contribución personal por parte del estudiante. No es necesario declarar en este apartado aquellos aspectos que se puedan resolver con el empleo adecuado de citas a lo largo de la memoria.
+
+Esta declaración \textbf{debe incluir todos los usos de IA para la generación de cualquier parte del proyecto}. Se debe indicar qué partes del proyecto se han generado de este modo, herramienta usada, y un resumen de ``prompts'' empleados.
+
+La omisión de elementos en esta declaración es susceptible de ser considerado plagio por parte del estudiante (ver más información \href{https://campus.uoc.edu/estudiant/microsites/plagi/es/index.html}{AQUÍ})
+\end{guidancebox}
+
+% -------------------------------------------------------------
+% ÍNDICE Y LISTAS
+% -------------------------------------------------------------
+\clearpage
+\section*{Índice}
+
+\begin{guidancebox}
+Generad un índice de acuerdo a los subapartados finales de la memòria.
+\end{guidancebox}
+\vspace{4mm}
+
+{
+  \hypersetup{linkcolor=black}
+  \renewcommand{\contentsname}{}
+  \vspace{-15mm}
+  \tableofcontents
+}
+
+\clearpage
+\section*{Lista de figuras}
+{
+  \hypersetup{linkcolor=black}
+  \renewcommand{\listfigurename}{}
+  \vspace{-15mm}
+  \listoffigures
+}
+
+% -------------------------------------------------------------
+% CUERPO PRINCIPAL DE LA MEMORIA
+% -------------------------------------------------------------
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\section{Introducción}
+
+\begin{guidancebox}
+Esta plantilla se concibe como una guía para el/la estudiante. Se puede adaptar a las necesidades de cada trabajo, siempre que el tutor/a del trabajo esté de acuerdo. Todas las figuras o tablas \textbf{siempre} se deben referenciar desde el texto (e.g. ``Tal como muestra la Figura 1...'').
+\end{guidancebox}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth]{\templateassets/sample_figure.png}
+  \captionsetup{format=guidance}
+  \caption[Este es un ejemplo de figura]{Este es un ejemplo de figura.}
+  \label{fig:ejemplo}
+\end{figure}
+
+\subsection{Contexto y justificación del Trabajo}
+
+\begin{guidancebox}
+Punto de partida del trabajo (¿Cuál es la necesidad a cubrir? ¿Por qué es un tema relevante? ¿Cómo se resuelve el problema de momento?) y aportación realizada (¿Qué resultado se quiere obtener?).
+
+Es importante tener en cuenta que el trabajo final debe ser comprensible para cualquier persona que conozca el área de conocimiento, pero no tiene por qué ser experta en el tema de lo que versa el trabajo.
+\end{guidancebox}
+
+\subsection{Objetivos del Trabajo}
+
+\begin{guidancebox}
+Listado de los objetivos del trabajo
+\end{guidancebox}
+
+\subsection{Impacto en sostenibilidad, ético-social y de diversidad}
+
+\begin{guidancebox}
+Esta sección debería identificar los impactos positivos y/o negativos del TF en según estos aspectos.
+\end{guidancebox}
+
+\subsection{Enfoque y método seguido}
+
+\begin{guidancebox}
+Mención a grandes rasgos de cuáles son las posibles estrategias para llevar a cabo el trabajo y cuál es la elegida (desarrollar un producto nuevo, adaptar un producto existente. . . ).
+
+Hay que incluir una valoración de por qué ésta es la estrategia más apropiada para conseguir los objetivos.
+\end{guidancebox}
+
+\subsection{Planificación del Trabajo}
+
+\begin{guidancebox}
+Descripción de los recursos necesarios para realizar el trabajo, las tareas a realizar y una planificación temporal de cada tarea mediante un diagrama de Gantt o similar. Esta planificación debería marcar cuáles son las metas parciales de cada una de las PEC.
+
+Identificación de los posibles riesgos que pueden hacer que esta planificación no se cumpla, y descripción de los planes de mitigación o alternativos en caso de que estos riesgos se conviertan en un problema.
+\end{guidancebox}
+
+\subsection{Breve sumario de productos obtenidos}
+
+\begin{guidancebox}
+No hay que entrar en detalle: la descripción detallada se hará al resto de capítulos.
+\end{guidancebox}
+
+\subsection{Breve descripción de los otros capítulos de la memoria}
+
+\begin{guidancebox}
+Breve explicación de los contenidos de cada capítulo y su relación con el proyecto global.
+\end{guidancebox}
+
+\clearpage
+\section{Estado del arte}
+
+\begin{guidancebox}
+Estado del arte del tema en cuestión. Debería acabar mostrando por qué el trabajo es importante y aporta algo, y con las hipótesis del trabajo.
+\end{guidancebox}
+
+\clearpage
+\section{Materials y métodos}
+
+\begin{guidancebox}
+En este capítulo, es necesario describir:
+\begin{itemize}
+  \item Los aspectos más relevantes del diseño y desarrollo del trabajo.
+  \item La metodología elegida para realizar este desarrollo, describiendo las alternativas posibles, las decisiones tomadas, y los criterios utilizados para tomar estas decisiones.
+  \item Herramientas a utilizar.
+\end{itemize}
+
+La estructuración de los apartados puede variar en función del tipo de trabajo.
+
+En caso de que proceda, se incluirá un apartado de ``Valoración económica del trabajo''. Este apartado indicará los gastos asociados al desarrollo y mantenimiento del trabajo, así como los beneficios económicos obtenidos y un análisis final sobre la viabilidad del producto.
+\end{guidancebox}
+
+\clearpage
+\section{Diseño}
+
+\begin{guidancebox}
+Este apartado incluye todos los aspectos necesarios para llevar a cabo el proyecto con éxito pero previos a la propia implementación. Por ejemplo, el análisis de requerimientos por parte de los usuarios (e.g. entrevistas, cuestionarios, trabajo de campo) o todos los aspectos arquitectónicos (e.g. diagramas de clases, módulos).
+\end{guidancebox}
+
+\clearpage
+\section{Resultados}
+
+\begin{guidancebox}
+El enfoque de este apartado puede variar en función del tipo de proyecto (más de desarrollo, teórico, o de investigación). En cualquier caso, es necesario describir el resultado final alcanzado a través de la realización del trabajo final. Estos resultados deben estar alineados con las herramientas y métodos y el diseño descritos anteriormente.
+
+Según el tipo de trabajo, se puede incluir una demostración o prueba de concepto, o resultados de pruebas (e.g. benchmarks, tests de usuarios) que demuestren su solidez.
+\end{guidancebox}
+
+\clearpage
+\section{Conclusiones y Trabajo futuro}
+
+\subsection{Conclusiones}
+
+\begin{guidancebox}
+Este apartado debe incluir:
+
+Una descripción de las conclusiones del trabajo:
+\begin{itemize}
+  \item Una vez obtenidos los resultados, ¿qué conclusiones se extrae?
+  \item ¿Estos resultados son los esperados? ¿Or han sido sorprendentes? ¿Por qué?
+\end{itemize}
+
+Una reflexión crítica sobre la consecución de los objetivos planteados inicialmente:
+\begin{itemize}
+  \item ¿Hemos alcanzado todos los objetivos? Si la respuesta es negativa, ¿por qué?
+\end{itemize}
+\end{guidancebox}
+
+\subsection{Seguimiento de la planificación}
+
+\begin{guidancebox}
+Un análisis crítico del seguimiento de la planificación y metodología a lo largo del producto:
+\begin{itemize}
+  \item ¿Se ha seguido la planificación?
+  \item ¿La metodología prevista ha sido suficientemente adecuada?
+  \item ¿Ha sido necesario introducir cambios para garantizar el éxito del trabajo? ¿Por qué?
+\end{itemize}
+
+De los impactos previstos en 1.3, ético-sociales, de sostenibilidad y de diversidad, evalúe/mencione si se han mitigado (si eran negativos) o si se han conseguido (si eran positivos).
+
+Si han aparecido impactos no previstos en 1.3, evaluar/mencionar cómo se han mitigado (si eran negativos) o qué han aportado (si eran positivos).
+\end{guidancebox}
+
+\subsection{Líneas de futuro}
+
+\begin{guidancebox}
+Las líneas de trabajo futuro que no han podido explorarse en este trabajo y han quedado pendientes.
+\end{guidancebox}
+
+\clearpage
+\section{Glosario}
+
+\begin{guidancebox}
+Definición de los términos y acrónimos más relevantes utilizados en la Memoria.
+\end{guidancebox}
+
+\clearpage
+\section{Bibliografía}
+
+\begin{guidancebox}
+Lista numerada de las referencias bibliográficas utilizadas en la memoria. En cada lugar donde se utilice una referencia dentro del texto, debe indicarse citando el número de la referencia, por ejemplo: [7].
+
+Es muy importante incluir todas las referencias utilizadas y citarlas apropiadamente, es decir, incluyendo toda la información necesaria para identificar la referencia. La información mínima a incluir según el tipo de referencia es:
+
+\begin{itemize}
+  \item Libro: Autores, Título, Edición (en su caso) Editorial, Ciudad, Año.
+  \item Artículo de revista: Autores, Título, Nombre de la Revista, Número de Página inicial y final, Número de la revista / Volumen, Año.
+  \item Web: URL y fecha en la que se ha visitado.
+\end{itemize}
+\end{guidancebox}
+
+\clearpage
+\section{Anexos}
+
+\begin{guidancebox}
+Listado de apartados que son demasiado extensos para incluir en la memoria y tienen un carácter autocontenido (por ejemplo, manuales de usuario, manuales de instalación, etc.)
+
+Dependiendo del tipo de trabajo, es posible que no sea necesario añadir ningún anexo.
+\end{guidancebox}
+
+\end{document}

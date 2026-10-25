@@ -63,3 +63,16 @@ imgui.ini
 *.ppm
 screenshot_*.png
 test_*.png
+
+# LaTeX build artifacts
+*.aux
+*.lof
+*.log
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.nav
+*.snm
+*.vrb
