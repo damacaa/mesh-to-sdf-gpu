@@ -48,27 +48,27 @@ namespace renderer
 			cornell.glslShapesCode = R"(
 				// Floor
 				{
-					float d = fPlane(p, vec3(0.0, 1.0, 0.0), 0.0);
+					float d = fBox(p - vec3(0.0, -0.05, -0.05), vec3(2.1, 0.05, 2.05));
 					if (d < minDist) { minDist = d; finalMaterialId = 0; }
 				}
 				// Ceiling
 				{
-					float d = fPlane(p, vec3(0.0, -1.0, 0.0), 4.0);
+					float d = fBox(p - vec3(0.0, 4.05, -0.05), vec3(2.1, 0.05, 2.05));
 					if (d < minDist) { minDist = d; finalMaterialId = 0; }
 				}
 				// Back wall
 				{
-					float d = fPlane(p, vec3(0.0, 0.0, 1.0), 2.0);
+					float d = fBox(p - vec3(0.0, 2.0, -2.05), vec3(2.1, 2.1, 0.05));
 					if (d < minDist) { minDist = d; finalMaterialId = 0; }
 				}
 				// Left wall (Red)
 				{
-					float d = fPlane(p, vec3(1.0, 0.0, 0.0), 2.0);
+					float d = fBox(p - vec3(-2.05, 2.0, -0.05), vec3(0.05, 2.1, 2.05));
 					if (d < minDist) { minDist = d; finalMaterialId = 1; }
 				}
 				// Right wall (Green)
 				{
-					float d = fPlane(p, vec3(-1.0, 0.0, 0.0), 2.0);
+					float d = fBox(p - vec3(2.05, 2.0, -0.05), vec3(0.05, 2.1, 2.05));
 					if (d < minDist) { minDist = d; finalMaterialId = 2; }
 				}
 				// Ceiling light fixture
