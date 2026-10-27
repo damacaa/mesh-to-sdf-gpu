@@ -41,7 +41,7 @@ Se desarrollará un método base de cálculo de distancias mediante *compute sha
 
 Los campos generados se integrarán en un visor interactivo construido a partir de un prototipo previo del autor. El visor permitirá examinar el volumen y observar su aplicación a iluminación indirecta difusa de un rebote, oclusión ambiental y sombras suaves. Su función será apoyar la evaluación, sin constituir un motor gráfico de propósito general.
 
-La comparación analizará el tiempo de generación, el consumo de memoria de vídeo y el error de distancia sobre un conjunto delimitado de escenas. Se espera identificar las ventajas y limitaciones de cada método, sin presuponer una mejora uniforme en todas las condiciones. Esta segunda entrega presenta el estado del arte exhaustivo, la especificación de requisitos y escenas, la formulación matemática y diseño arquitectónico de los generadores de SDF en GPU, y la consolidación e inspección experimental del visor interactivo de validación (Hito OE1).
+La comparación analizará el tiempo de generación, el consumo de memoria de vídeo y el error de distancia sobre un conjunto delimitado de escenas. Se espera identificar las ventajas y limitaciones de cada método, sin presuponer una mejora uniforme en todas las condiciones. Esta segunda entrega consolida la introducción y presenta el estado del arte, la estrategia de desarrollo, las herramientas, el protocolo experimental y el visor interactivo de validación ya implementado.
 
 ## Abstract
 
@@ -51,40 +51,44 @@ A baseline distance computation method will be implemented using compute shaders
 
 The generated fields will be integrated into an interactive viewer adapted from a prototype previously developed by the author. The viewer will support volume inspection and demonstrate one-bounce diffuse indirect lighting, ambient occlusion, and soft shadows. It will serve as an evaluation tool rather than a general-purpose graphics engine.
 
-The experimental comparison will examine generation time, video memory consumption, and distance error across a limited set of test scenes. The aim is to identify the advantages and limitations of each method without assuming consistent improvements under all conditions. This second deliverable presents the comprehensive state of the art, system requirements, mathematical formulation and architecture of the GPU SDF generators, and experimental validation of the interactive testbed (Milestone OE1).
+The experimental comparison will examine generation time, video memory consumption, and distance error across a limited set of test scenes. The aim is to identify the advantages and limitations of each method without assuming consistent improvements under all conditions. This second submission presents the state of the art, the development strategy, the experimental protocol, and the interactive viewer for validation.
 
 ---
 
-# DECLARACIÓN DE RECURSOS UTILIZADOS Y USO DE INTELIGENCIA ARTIFICIAL
+# DECLARACIÓN DE USO DE RECURSOS DE TERCEROS
 
-## Bibliotecas y tecnologías
+## Bibliotecas y recursos de software de terceros
 
-El desarrollo utilizará C++ y OpenGL 4.6 como base de la aplicación y de los procesos de renderizado y cálculo en GPU. Se prevé emplear las siguientes bibliotecas:
+Para el desarrollo de la aplicación y de los procesos de renderizado y cálculo en GPU se han utilizado C++20 y OpenGL 4.6 junto con las siguientes bibliotecas y recursos de terceros:
 
-- **SDL3:** creación de ventanas, gestión del contexto gráfico y tratamiento de eventos de entrada.
-- **GLM:** operaciones de álgebra lineal y transformaciones.
-- **Assimp:** importación de mallas y escenas tridimensionales.
-- **Dear ImGui:** interfaz para modificar parámetros, seleccionar modos de visualización y consultar métricas.
+- **SDL3:** creación de ventanas, gestión del contexto gráfico OpenGL y tratamiento de eventos de entrada.
+- **GLAD:** carga dinámica de punteros a funciones del perfil Core de OpenGL 4.6.
+- **GLM:** operaciones de álgebra lineal, matrices y transformaciones espaciales.
+- **Assimp:** importación y preprocesamiento de mallas y escenas tridimensionales.
+- **Dear ImGui:** interfaz gráfica de usuario para modificar parámetros en tiempo real, seleccionar modos de visualización y consultar métricas.
+- **stb\_image / stb\_image\_write:** carga de texturas auxiliares y exportación de capturas de pantalla sin pérdida.
+- **hg\_sdf (Mercury):** funciones auxiliares de primitivas analíticas y operadores de geometría constructiva en GLSL empleadas en las escenas de control del visor.
+- **NVIDIA Spatiotemporal Blue Noise (STBN):** máscaras precalculadas de ruido azul espaciotemporal utilizadas en el muestreo estocástico del trazador de caminos.
 
 ## Modelos y escenas tridimensionales
 
-Se prevé utilizar **Cornell Box** como escena controlada para examinar la iluminación indirecta y las sombras, y **Crytek Sponza** para realizar pruebas con mayor complejidad geométrica y oclusión. Estas escenas se complementarán con modelos geométricos de control.
+Se han utilizado **Cornell Box**, como escena controlada para examinar la iluminación indirecta y las sombras, y **Crytek Sponza**, para realizar las pruebas con mayor complejidad geométrica y oclusión. Estas escenas se han complementado con modelos geométricos sintéticos de control (esfera y cubo teselados a distintas densidades).
 
-La selección de las versiones concretas y las adaptaciones necesarias se realizará durante la fase de especificación y diseño, de acuerdo con las condiciones de entrada admitidas por los generadores. Se documentarán la procedencia y las condiciones de uso de los recursos empleados.
+La selección de las versiones concretas y las adaptaciones realizadas se han ajustado a las condiciones de entrada admitidas por los generadores, documentando en la memoria la procedencia y las características de los modelos empleados.
 
 ## Prototipo previo del autor
 
-El proyecto reutilizará un prototipo propio de *path tracer* interactivo basado en *ray marching* sobre primitivas SDF analíticas y trazado en espacio de pantalla sobre el búfer de profundidad.
+En este proyecto se ha reutilizado como base un prototipo propio de *path tracer* interactivo basado en *ray marching* sobre primitivas SDF analíticas definidas directamente en el shader.
 
-Este desarrollo previo servirá como punto de partida del visor. Su adaptación permitirá disponer de un entorno de pruebas antes de integrar los campos volumétricos generados a partir de mallas.
+Este desarrollo previo ha servido como punto de partida del visor interactivo y su adaptación ha permitido disponer de un entorno de pruebas validado para inspeccionar los campos volumétricos generados a partir de mallas.
 
-La generación de SDF en GPU, la implementación de la alternativa basada en JFA en tres dimensiones y la evaluación comparativa se desarrollarán durante el TFM. Estas contribuciones se distinguirán de las funcionalidades procedentes del prototipo anterior.
+La arquitectura de texturas tridimensionales en GPU, la generación de SDF a partir de mallas poligonales, la implementación de la alternativa basada en JFA en tres dimensiones, el cauce de reducción de ruido espacio-temporal SVGF y la evaluación comparativa se han desarrollado específicamente durante el presente TFM, distinguiéndose de las funcionalidades procedentes del prototipo anterior.
 
 ## Uso de herramientas de inteligencia artificial
 
-Se declara el uso de Antigravity / Gemini y OpenAI ChatGPT como apoyo para estructurar la propuesta, redactar y revisar el texto, detectar incoherencias y discutir decisiones técnicas.
+Se declara el uso de Antigravity (modelos Gemini y Claude) y OpenAI (ChatGPT / Codex) como herramientas de apoyo para estructurar y revisar la redacción técnica de la memoria, asistir en la implementación y depuración de shaders en GLSL y código C++, y analizar alternativas algorítmicas. Entre los *prompts* e instrucciones empleados se incluyen consultas para la revisión estilística e impersonal del documento, el diagnóstico de artefactos numéricos en el filtro SVGF y la estructuración de pruebas automatizadas, cuyo registro detallado de sesiones se recoge en el archivo `docs/declaracion_recursos_ia.md` del repositorio.
 
-La revisión del contenido, la selección de los métodos y la validación de las implementaciones y los resultados serán responsabilidad del autor. Las respuestas de estas herramientas no sustituirán la consulta de las fuentes originales ni la comprobación experimental.
+La revisión del contenido, la selección de los métodos y la validación de las implementaciones y de los resultados han sido responsabilidad exclusiva del autor. Las respuestas de estas herramientas no han sustituido la consulta de las fuentes bibliográficas originales ni la comprobación experimental.
 
 ---
 
@@ -92,20 +96,20 @@ La revisión del contenido, la selección de los métodos y la validación de la
 
 ## 1.1. Contexto y justificación del trabajo
 
-La iluminación global en tiempo real plantea un compromiso entre calidad visual y coste de cálculo. Además de la luz que llega directamente desde una fuente hasta una superficie, considera las contribuciones indirectas producidas por las reflexiones sobre otras superficies de la escena, descritas por la ecuación de renderizado [1]. Estas interacciones permiten representar fenómenos como la transferencia de color entre objetos próximos, conocida como *color bleeding* (Figura 1).
+Un campo de distancia con signo (*Signed Distance Field*, SDF) es una representación espacial que asigna a cada punto del espacio la distancia mínima hasta la superficie geométrica más cercana, utilizando el signo para distinguir el interior del exterior cuando la geometría admite esa clasificación. Esta formulación permite consultar de manera directa tanto la proximidad a una frontera como la dirección hacia ella a través del gradiente del campo. Gracias a estas propiedades, los SDF se utilizan en ámbitos diversos de la computación espacial más allá de la síntesis de imagen: en simulación física y detección de colisiones, donde los valores negativos cuantifican la profundidad de penetración entre cuerpos y el gradiente define la normal de contacto [13, 14]; y en robótica y visión por computador, donde permiten reconstruir el entorno a partir de sensores de profundidad para planificar trayectorias libres de obstáculos o simular la interacción física con objetos escaneados [15].
+
+Dentro del desarrollo de videojuegos y la computación gráfica interactiva, además de su utilidad en motores de física, los SDF destacan como estructura de aceleración para el trazado de rayos por software mediante el algoritmo de *sphere tracing* [3], que adapta la longitud de los pasos de un rayo según la distancia segura a la superficie. Una de las aplicaciones más exigentes de este enfoque es la iluminación global en tiempo real, que plantea un compromiso constante entre calidad visual y coste de cálculo. Además de la luz que llega directamente desde una fuente hasta una superficie, la iluminación global considera las contribuciones indirectas producidas por las reflexiones sobre otras superficies de la escena, descritas por la ecuación de renderizado [1]. Estas interacciones permiten representar fenómenos como la transferencia de color entre objetos próximos, conocida como *color bleeding* (Figura 1).
 
 ![Figura 1: Ejemplo de iluminación global con transferencia de color (color bleeding).](assets/screenshot_20261011_164754.bmp)
 Figura 1: Ejemplo de iluminación global: la luz rebota en el suelo e ilumina la parte inferior de la esfera; la luz reflejada en las paredes modula el sombreado de la esfera con el color de cada pared.
 
-En este contexto, los campos de distancia con signo ofrecen una representación de la geometría que puede utilizarse para realizar consultas espaciales durante el trazado de rayos por software. Su aplicación a sistemas de iluminación como Lumen, de Unreal Engine 5 [2], constituye una referencia para estudiar este enfoque. El presente trabajo se centrará en la generación de dichos campos y en una demostración acotada de su uso, sin intentar reproducir un sistema de iluminación de la complejidad de Lumen.
+En este contexto, sistemas de iluminación modernos como Lumen, de Unreal Engine 5 [2], constituyen una referencia del empleo de campos de distancia discretizados para realizar consultas espaciales sin depender exclusivamente de hardware dedicado de trazado de rayos. No obstante, en una representación volumétrica discretizada, la precisión del campo y los errores de aproximación pueden afectar a las consultas espaciales y producir artefactos visuales, por lo que su comportamiento debe evaluarse. El presente trabajo se centrará en la generación de dichos campos en GPU y en una demostración acotada de su uso en iluminación global, sin intentar reproducir un sistema de iluminación de la complejidad de Lumen.
 
-Un campo de distancia con signo, o SDF, representa la distancia mínima desde un punto del espacio hasta la superficie más cercana. El signo permite distinguir el interior del exterior cuando la geometría admite esa clasificación. A partir de esta información, el algoritmo de *sphere tracing* [3] adapta la longitud de los pasos de un rayo según la distancia a la superficie. En una representación volumétrica discretizada, la precisión del campo y los errores de aproximación pueden afectar al trazado y producir artefactos, por lo que su comportamiento debe evaluarse.
+La generación del volumen de distancias es uno de los problemas centrales que plantea el uso de SDF en todos estos dominios. Cuando se parte de mallas poligonales, el cálculo exacto de distancias entre los puntos de una cuadrícula tridimensional y los triángulos de una malla puede requerir un número elevado de evaluaciones, cuyo coste crece con la resolución del volumen y la complejidad de la geometría. Aunque el precálculo resulta suficiente para entornos estáticos, reducir el tiempo de generación permitiría explorar actualizaciones más frecuentes y ampliar sus condiciones de uso.
 
-La generación del volumen de distancias es uno de los problemas que plantea el uso de SDF a partir de mallas poligonales. El cálculo de distancias entre los puntos de una cuadrícula tridimensional y los triángulos de una malla puede requerir un número elevado de evaluaciones. Su coste depende tanto de la resolución del volumen como de la complejidad de la geometría. Aunque el precálculo puede ser suficiente para determinados usos estáticos, reducir el tiempo de generación permitiría explorar otras condiciones de actualización y uso.
+La motivación práctica del proyecto parte de un límite concreto de un prototipo previo del autor: el visor existente utiliza únicamente primitivas SDF analíticas. Para trabajar con geometría poligonal arbitraria, se propone sustituir estas primitivas por texturas tridimensionales que almacenen el campo de distancias generado en GPU. Esta transición proporciona un banco de pruebas controlado para estudiar la construcción del volumen y observar cómo sus imprecisiones afectan al resultado visual.
 
-La motivación del proyecto parte de un límite concreto de un prototipo previo del autor: el visor existente utiliza primitivas SDF analíticas. Para trabajar con mallas poligonales, se propone sustituir estas primitivas por texturas tridimensionales que almacenen el campo de distancias. Esta transición proporciona un contexto práctico para estudiar la generación del volumen y observar cómo sus errores afectan al resultado visual.
-
-El trabajo comparará un método base de cálculo de distancias en GPU con una alternativa que combine la captura de datos de superficie mediante rasterización y la propagación espacial mediante *Jump Flooding* (JFA) [4]. La pregunta que orienta la evaluación es qué compromiso ofrece esta alternativa entre tiempo de generación, consumo de memoria y error de distancia respecto al método de referencia.
+El trabajo comparará un método base de cálculo de distancias punto-triángulo en GPU con una alternativa que combine la captura de datos de superficie mediante rasterización y la propagación espacial mediante *Jump Flooding* (JFA) [4]. Al partir de datos superficiales proyectados en lugar de evaluar cada triángulo de la malla desde cada vóxel, esta segunda aproximación no solo busca desacoplar la fase de propagación de la complejidad poligonal en gráficos, sino que también guarda paralelismo con la construcción de campos de distancia a partir de capturas parciales o sensores de profundidad en simulación física y robótica. La pregunta que orienta la evaluación es qué compromiso ofrece esta alternativa entre tiempo de generación, consumo de memoria y error de distancia respecto al método de referencia.
 
 El producto será un prototipo técnico de generación y evaluación de SDF, acompañado de un visor interactivo, dentro del área de programación gráfica y motores de videojuegos. En el visor se podrá cargar una escena de prueba, seleccionar el campo generado por cada método, inspeccionar cortes del volumen y observar su utilización en la iluminación. La generación de los campos y su comparación constituirán el núcleo del trabajo; el visor actuará como herramienta de demostración y análisis.
 
@@ -119,7 +123,7 @@ Diseñar, implementar y evaluar dos métodos de generación de campos de distanc
 
 **OE1. Adaptar el visor de partida.** Integrar el prototipo previo del autor en una aplicación modular en C++ con OpenGL 4.6 y SDL3, con controles de cámara, iluminación e interfaz, para disponer de un entorno de pruebas durante el desarrollo.
 
-**OE2. Incorporar el muestreo de campos volumétricos.** Sustituir las primitivas SDF analíticas y el trazado en espacio de pantalla por el muestreo de texturas tridimensionales de distancia, adaptando el *ray marching* para representar iluminación indirecta difusa de un rebote, oclusión ambiental y sombras suaves. El sombreado utilizará también la información de superficie necesaria.
+**OE2. Incorporar el muestreo de campos volumétricos.** Sustituir las primitivas SDF analíticas por el muestreo de texturas tridimensionales de distancia, adaptando el *ray marching* para representar iluminación indirecta difusa de un rebote, oclusión ambiental y sombras suaves. El sombreado utilizará también la información de superficie necesaria.
 
 **OE3. Implementar y comprobar el método de referencia.** Desarrollar un generador de distancias volumétricas en GPU mediante *compute shaders*. Antes de utilizar sus resultados como referencia, comprobar su funcionamiento con geometrías de control cuyas distancias sean conocidas.
 
@@ -191,9 +195,9 @@ Git se utilizará para el control de versiones y la trazabilidad de los cambios,
 
 **PEC 1. Definición y planificación.** Se concretarán el problema, la motivación, los objetivos, el alcance y la planificación inicial. Esta entrega no incluirá nueva implementación del proyecto.
 
-**PEC 2. Estudio, diseño y entorno de validación.** Se desarrollarán el estado del arte, los requisitos, la arquitectura de los generadores y el protocolo experimental. En el plano práctico, se consolidará y verificará el visor interactivo con filtrado SVGF (OE1) y se integrará el muestreo de texturas 3D mediante volúmenes de control generados por un *compute shader* preliminar (avance de OE2), despejando los riesgos de integración antes de abordar la geometría poligonal.
+**PEC 2. Estado del arte, materiales y métodos y entorno de validación.** Se desarrollarán el capítulo 2 (estado del arte e hipótesis) y el capítulo 3 (estrategia de desarrollo, herramientas, protocolo experimental y entorno de pruebas). En el plano práctico, se consolidará y verificará el visor interactivo con filtrado SVGF (OE1) y se integrará el muestreo de texturas 3D mediante volúmenes de control generados por un *compute shader* preliminar (avance de OE2), despejando los riesgos de integración antes de abordar la geometría poligonal.
 
-**PEC 3. Implementación de generadores volumétricos a partir de mallas.** Se implementarán la carga y empaquetado de mallas en búferes SSBO, el generador base de referencia punto-triángulo (OE3), el generador alternativo basado en captura de superficie y propagación JFA 3D (OE4) y el inspector de cortes bidimensionales (OE5). Se realizarán las primeras comprobaciones numéricas y mediciones comparativas, actualizando el capítulo 4.
+**PEC 3. Diseño e implementación de generadores volumétricos a partir de mallas.** Se redactará el capítulo 4 (diseño y arquitectura) y se implementarán la carga y empaquetado de mallas en búferes SSBO, el generador base de referencia punto-triángulo (OE3), el generador alternativo basado en captura de superficie y propagación JFA 3D (OE4) y el inspector de cortes bidimensionales (OE5). Se realizarán las primeras comprobaciones numéricas y mediciones comparativas.
 
 **PEC 4. Evaluación y cierre.** Se completará la batería experimental, se analizarán los resultados y se redactarán las conclusiones. También se consolidará la memoria y se preparará la presentación y defensa en vídeo.
 
@@ -225,13 +229,13 @@ El seguimiento semanal permitirá contrastar el trabajo realizado con el previst
 
 Se completarán la ficha del trabajo y el capítulo 1 de la memoria, con la justificación, los objetivos, el impacto, la metodología y la planificación. También se organizarán el repositorio y la documentación inicial.
 
-**PEC 2 — 08/11/2026: estado del arte, arquitectura y consolidación del visor base.**
+**PEC 2 — 08/11/2026: estado del arte, materiales y métodos y consolidación del visor base.**
 
-Se redactarán el capítulo 2 (estado del arte) y el capítulo 3 (requisitos, escenas y protocolo experimental). En el capítulo 4 se definirá la arquitectura de los generadores en GPU y se documentará la implementación y verificación del visor interactivo híbrido con reducción de ruido SVGF (OE1), junto con la integración preliminar de texturas 3D (`GL_TEXTURE_3D`) mediante volúmenes analíticos de prueba en *compute shaders* (avance de OE2).
+Se redactarán el capítulo 2 (estado del arte e hipótesis) y el capítulo 3 (estrategia de desarrollo, herramientas, protocolo experimental y entorno de validación). En el plano práctico, se consolidará y verificará el visor interactivo con reducción de ruido SVGF sobre primitivas analíticas definidas en el shader (OE1), incorporando a continuación la visualización y muestreo de texturas 3D de distancia (`GL_TEXTURE_3D`) generadas también a partir de primitivas analíticas a modo de volumen sustituto (*placeholder*) (avance de OE2).
 
-**PEC 3 — 29/11/2026: implementación de generadores sobre mallas y resultados intermedios.**
+**PEC 3 — 29/11/2026: diseño, implementación de generadores sobre mallas y resultados intermedios.**
 
-Se sustituirá el generador procedimental de prueba por la lectura de mallas poligonales en GPU mediante búferes SSBO, implementando el generador base de referencia (OE3) y la alternativa acelerada mediante rasterización y JFA 3D (OE4). Se incorporará el visor de cortes ortogonales 2D (OE5) y se conectarán los volúmenes generados con el trazador de iluminación (consolidación de OE2). La entrega incluirá las primeras comprobaciones numéricas y mediciones comparativas.
+Se desarrollará el capítulo 4 (diseño y arquitectura) y se sustituirá el generador procedimental de prueba por la lectura de mallas poligonales en GPU mediante búferes SSBO, implementando el generador base de referencia (OE3) y la alternativa acelerada mediante rasterización y JFA 3D (OE4). Se incorporará el visor de cortes ortogonales 2D (OE5) y se conectarán los volúmenes generados con el trazador de iluminación (consolidación de OE2). La entrega incluirá las primeras comprobaciones numéricas y mediciones comparativas.
 
 **PEC 4 — 23/12/2026: resultados, memoria final y defensa.**
 
@@ -239,7 +243,7 @@ Se completarán las pruebas, el análisis del capítulo 5 y las conclusiones del
 
 ### Cronograma
 
-La Tabla 1 recoge la planificación actualizada del proyecto. Durante la fase correspondiente a la PEC 2 se ha adelantado la consolidación del visor interactivo (OE1) y la transición inicial a texturas 3D mediante volúmenes de control generados en GPU (OE2 preliminar). Esta adaptación temprana mitiga el riesgo de integración visual (R2) y permite dedicar íntegramente el bloque de la PEC 3 a la implementación y validación de los dos generadores a partir de mallas poligonales (OE3 y OE4) y al inspector de cortes (OE5).
+La Tabla 1 recoge la planificación actualizada del proyecto. Durante la fase correspondiente a la PEC 2 se ha adelantado la consolidación del visor interactivo (OE1) y la transición inicial a texturas 3D mediante volúmenes de prueba generados en GPU a partir de primitivas analíticas (OE2 preliminar). Esta adaptación temprana mitiga el riesgo de integración visual (R2) y permite dedicar íntegramente el bloque de la PEC 3 a la implementación y validación de los dos generadores a partir de mallas poligonales (OE3 y OE4) y al inspector de cortes (OE5).
 
 **Tabla 1. Cronograma del proyecto.**
 
@@ -248,10 +252,10 @@ La Tabla 1 recoge la planificación actualizada del proyecto. Durante la fase co
 | PEC 1 | Definición del proyecto y ficha del trabajo                                      | 23/09/2026 | 06/10/2026 |
 | PEC 1 | Redacción del capítulo 1 y preparación de la entrega                             | 06/10/2026 | 11/10/2026 |
 | PEC 2 | Investigación y redacción del estado del arte                                    | 12/10/2026 | 25/10/2026 |
-| PEC 2 | Consolidación del visor híbrido SVGF y verificación determinista (OE1)           | 15/10/2026 | 28/10/2026 |
-| PEC 2 | Especificación de requisitos y protocolo de evaluación                           | 23/10/2026 | 01/11/2026 |
-| PEC 2 | Diseño arquitectónico de generadores e integración 3D preliminar (OE2)           | 28/10/2026 | 08/11/2026 |
-| PEC 3 | Empaquetado de mallas (Assimp/SSBO) e implementación del generador base (OE3)    | 09/11/2026 | 16/11/2026 |
+| PEC 2 | Consolidación del visor con SVGF sobre primitivas analíticas (OE1)               | 15/10/2026 | 28/10/2026 |
+| PEC 2 | Estrategia metodológica, herramientas y protocolo de evaluación                  | 23/10/2026 | 01/11/2026 |
+| PEC 2 | Integración de texturas 3D SDF placeholder y entrega PEC 2 (OE2 preliminar)      | 28/10/2026 | 08/11/2026 |
+| PEC 3 | Diseño arquitectónico, empaquetado SSBO e implementación del generador base (OE3)| 09/11/2026 | 16/11/2026 |
 | PEC 3 | Implementación del generador alternativo por captura superficial y JFA 3D (OE4)  | 15/11/2026 | 23/11/2026 |
 | PEC 3 | Implementación del visor de cortes 2D y conexión de mallas con el trazador (OE5) | 21/11/2026 | 26/11/2026 |
 | PEC 3 | Comprobaciones numéricas iniciales, primeras mediciones y entrega PEC 3          | 24/11/2026 | 29/11/2026 |
@@ -285,61 +289,46 @@ Las medidas de contingencia darán prioridad a obtener resultados comparables y 
 
 ## 1.6. Breve sumario de productos obtenidos
 
-En esta segunda entrega se consolidan los fundamentos teóricos, la especificación técnica y los diseños arquitectónicos de los componentes previstos, junto con la culminación del primer hito práctico (OE1):
+El desarrollo del proyecto dará lugar a cuatro resultados principales, cuya descripción detallada se aborda en el resto de capítulos de la memoria:
 
-### Aplicación interactiva de pruebas y validación (Hito OE1 completado)
-
-Se ha desarrollado una aplicación modular en C++20 y OpenGL 4.6 Core Profile que gestiona ventanas y eventos con SDL3, interfaz gráfica con Dear ImGui y un cauce de renderizado diferido con reducción de ruido espacio-temporal SVGF. Este entorno sirve como banco de pruebas validado para la futura inyección de volúmenes SDF.
-
-### Módulos de generación de SDF en GPU (Hitos OE3 y OE4 diseñados)
-
-Se han formalizado matemáticamente y diseñado a nivel de arquitectura GPU dos módulos de cálculo volumétrico: el método base de referencia mediante *compute shaders* (evaluación directa punto-triángulo) y la alternativa rápida mediante rasterización de superficie y propagación por *Jump Flooding* (JFA) 3D.
-
-### Sistema de iluminación e inspección volumétrica
-
-El visor dispone de un trazador de caminos híbrido con soporte para muestreo volumétrico, sombras suaves cónicas, oclusión y un visor de cortes ortogonales bidimensionales (*slice viewer*) para inspeccionar la distribución del campo de distancias escalar.
-
-### Banco de pruebas y protocolo de evaluación
-
-Se han definido las escenas canónicas de control geométrico (esfera y cubo analíticos) y las escenas arquitectónicas (Cornell Box y Crytek Sponza), junto con la formulación analítica de métricas de error (MAE, RMSE, $E_{\max}$), consumo de VRAM y tiempos de cálculo aislados mediante consultas `GL_TIME_ELAPSED`.
-
-### Memoria y documentación académica
-
-Se presenta la memoria técnica reestructurada según la normativa de la UOC para la PEC 2, documentando el estado del arte, los materiales y métodos, la arquitectura detallada y las validaciones cuantitativas del visor de partida.
+- **Módulos de generación de SDF en GPU:** un método base de cálculo exacto de distancias punto-triángulo mediante *compute shaders* y una alternativa acelerada que combina la captura de superficie por rasterización con la propagación espacial mediante JFA en tres dimensiones.
+- **Aplicación interactiva de validación e inspección:** un visor modular en C++20 y OpenGL 4.6 con trazado de caminos sobre campos SDF, reducción de ruido espacio-temporal SVGF, muestreo de texturas tridimensionales y un inspector de cortes ortogonales bidimensionales (*slice viewer*).
+- **Banco de pruebas y conjunto de datos experimentales:** una batería de evaluación sobre geometrías de control y escenas de complejidad creciente que cuantificará tiempos de generación en GPU, consumo de memoria de vídeo y error numérico de distancia respecto al método de referencia.
+- **Memoria técnica y defensa del trabajo:** la documentación académica completa conforme a la normativa de la asignatura, junto con la presentación y defensa audiovisual del prototipo.
 
 ## 1.7. Breve descripción de los otros capítulos de la memoria
 
 ### Capítulo 2. Estado del arte
 
-Presenta los fundamentos matemáticos de los campos de distancia con signo (SDF) y la ecuación iconal. Desarrolla exhaustivamente la formulación de distancia mínima punto-triángulo en GPU y los métodos topológicos de determinación de signo. Profundiza en el algoritmo *Jump Flooding* (JFA) 3D y contextualiza las técnicas de iluminación global y reconstrucción espacio-temporal (SVGF) como herramientas de validación visual.
+Revisa los fundamentos matemáticos de los campos de distancia con signo (SDF) y el trazado de esferas, la formulación de distancia mínima punto-triángulo en GPU, los métodos topológicos de determinación del signo y el algoritmo *Jump Flooding* (JFA) en 3D. Asimismo, contextualiza la iluminación global interactiva y la reconstrucción espacio-temporal (SVGF), cerrando con la síntesis de aportaciones y las hipótesis del trabajo.
 
 ### Capítulo 3. Materiales y métodos
 
-Define los requisitos funcionales y no funcionales del sistema, desglosando la generación volumétrica y el visor interactivo. Detalla la pila tecnológica, la caracterización de las escenas canónicas y los modelos de control, y formaliza el protocolo experimental dual (validación del visor en Fase 1 y evaluación comparativa de generadores en Fase 2).
+Expone la estrategia de diseño y desarrollo adoptada, analizando las alternativas consideradas y los criterios de decisión. Describe la pila tecnológica y las herramientas empleadas, detalla el entorno interactivo de validación ya implementado (Hito OE1 y avance de OE2) y formaliza las escenas de prueba y el protocolo experimental.
 
-### Capítulo 4. Diseño e implementación
+### Capítulo 4. Diseño
 
-Expone la arquitectura general del sistema en GPU, detallando el empaquetado de geometrías en SSBOs y el cauce *compute shader* de los generadores (OE3 y OE4). Asimismo, documenta de forma íntegra la implementación del visor interactivo híbrido y el filtro SVGF (OE1), acompañada de su validación experimental en tasas de refresco y estabilidad numérica.
+Describirá los requisitos del sistema y la arquitectura de los módulos generadores de SDF en GPU y del inspector volumétrico, incluyendo el empaquetado de geometrías en búferes SSBO, la organización de los *compute shaders*, la captura de superficie, el cálculo del signo y el esquema *ping-pong* de propagación.
 
 ### Capítulo 5. Resultados
 
-Presenta la plantilla estructural para la consolidación de los ensayos experimentales que se llevarán a cabo en las entregas PEC 3 y PEC 4, estructurada en comprobación de control, tiempos de GPU, consumo de memoria VRAM, error métrico de distancias e impacto visual en iluminación global.
+Presentará y analizará las mediciones obtenidas sobre los modelos de control y las escenas seleccionadas. Comparará ambos métodos en tiempo de generación, consumo de VRAM y error numérico de distancia, relacionando las discrepancias métricas con su impacto visual en la iluminación global.
 
 ### Capítulo 6. Conclusiones y trabajo futuro
 
-Resume el grado de cumplimiento de los hitos fijados para la PEC 2 (consecución de OE1, OE5 y diseño de OE3/OE4), estableciendo la hoja de ruta de implementación inmediata para la PEC 3 y las líneas de investigación futura para la PEC 4.
+Contrastará los resultados alcanzados con los objetivos e hipótesis iniciales, evaluará el seguimiento de la planificación y de los impactos previstos, y recogerá las limitaciones observadas junto con las líneas de extensión futura.
 
 ### Capítulo 7. Glosario
 
-Define los términos y acrónimos fundamentales empleados a lo largo del documento (SDF, JFA, SVGF, SSBO, Compute Shader, Voxelización, G-Buffer, etc.).
+Define los términos técnicos y acrónimos más relevantes utilizados a lo largo de la memoria.
 
 ### Capítulo 8. Bibliografía
 
-Recoge las fuentes académicas y técnicas citadas a lo largo de la memoria mediante numeración correlativa estandarizada conforme al formato IEEE.
+Recoge las fuentes académicas y técnicas citadas en el documento mediante numeración correlativa estandarizada.
 
 ### Capítulo 9. Anexos
 
-Contiene las especificaciones estructurales de los módulos de sombreado GLSL y las instrucciones reproducibles de compilación y ejecución en entornos compatibles.
+Incluirá el material complementario autocontenido necesario para consultar o reproducir el trabajo al cierre del proyecto.
 
 ---
 
@@ -355,7 +344,7 @@ El signo positivo identifica los puntos pertenecientes al exterior del volumen, 
 
 $$n = \nabla f(p) = \left( \frac{\partial f}{\partial x}, \frac{\partial f}{\partial y}, \frac{\partial f}{\partial z} \right)$$
 
-Esta característica fundamenta el algoritmo de trazado de esferas (*Sphere Tracing*) introducido por Hart [3]. A diferencia del trazado por pasos uniformes (*ray marching* regular), el trazado de esferas garantiza que dentro de una esfera de radio $f(p)$ centrada en la posición actual del rayo no existe intersección geométrica alguna con la escena. Por tanto, el avance del rayo puede adaptarse dinámicamente a la distancia devuelta por el campo:
+En simulación física y robótica, esta relación proporciona de forma directa la profundidad de interpenetración ($f(p) < 0$), el margen de seguridad frente a obstáculos ($f(p) > 0$) y la dirección normal de contacto o repulsión ($\nabla f(p)$) [14, 15]. En síntesis de imagen, esta misma propiedad fundamenta el algoritmo de trazado de esferas (*Sphere Tracing*) introducido por Hart [3]. A diferencia del trazado por pasos uniformes (*ray marching* regular), el trazado de esferas garantiza que dentro de una esfera de radio $f(p)$ centrada en la posición actual del rayo no existe intersección geométrica alguna con la escena. Por tanto, el avance del rayo puede adaptarse dinámicamente a la distancia devuelta por el campo:
 
 $$p_{k+1} = p_k + f(p_k) \cdot \omega$$
 
@@ -391,7 +380,7 @@ A partir de este punto crítico, se discriminan los casos geométricos:
 
 ### Paralelización masiva en GPU mediante Compute Shaders
 
-Para generar un volumen de distancias sobre una cuadrícula regular de $V^3$ vóxeles inscrita en una caja envolvente alineada con los ejes (*Axis-Aligned Bounding Box*, AABB), el método directo o de fuerza bruta asigna un hilo de ejecución independiente a cada vóxel $(i, j, k)$. La posición tridimensional del centro del vóxel en espacio de mundo se calcula como:
+Para generar un volumen de distancias sobre una cuadrícula regular de $V^3$ vóxeles inscrita en una bounding box alineada con los ejes (*Axis-Aligned Bounding Box*, AABB), el método directo o de fuerza bruta asigna un hilo de ejecución independiente a cada vóxel $(i, j, k)$. La posición tridimensional del centro del vóxel en espacio de mundo se calcula como:
 
 $$p_{ijk} = \text{AABB}_{\min} + \left( \frac{(i, j, k) + 0.5}{V} \right) \odot (\text{AABB}_{\max} - \text{AABB}_{\min})$$
 
@@ -465,112 +454,153 @@ Por esta razón, la arquitectura del TFM integra un cauce de reconstrucción esp
 3. **Estimación y seguimiento de varianza:** Evalúa continuamente los momentos estadísticos de la señal luminosa ($\mu_1 = \mathbb{E}[L]$ y $\mu_2 = \mathbb{E}[L^2]$), computando la varianza local $\sigma^2 = \mu_2 - \mu_1^2$ para adaptar dinámicamente la agresividad del filtrado.
 4. **Filtrado multiescala À-Trous:** Aplica un filtro espacial separable basado en ondículas [7] sobre un núcleo $B_3$-spline de $5 \times 5$ en múltiples pasadas ping-pong con saltos exponenciales crecientes ($2^i$ píxeles), ponderado por funciones de parada que detectan discontinuidades en normales, distancias planares y varianza local.
 
-Asimismo, la integración de mallas poligonales rasterizadas con geometrías implícitas volumétricas se canaliza mediante una arquitectura diferida híbrida (*Deferred G-Buffer*). La rasterización primaria extrae la visibilidad y atributos de superficie de las mallas, mientras que el trazador de caminos por *sphere tracing* sobre las texturas 3D SDF resuelve la visibilidad de los rebotes secundarios difusos, la oclusión ambiental y las sombras suaves de contacto. Este marco tecnológico desacopla el análisis del volumen respecto a las limitaciones visuales del muestreo estocástico puro.
+Este cauce de reconstrucción espacio-temporal permite evaluar en tiempo real tanto funciones de distancia analíticas codificadas directamente en el shader como texturas volumétricas tridimensionales (`GL_TEXTURE_3D`), desacoplando el análisis de fidelidad del campo de distancias respecto al ruido estocástico propio del muestreo de Montecarlo a baja densidad.
+
+## 2.5. Síntesis, aportación e hipótesis del trabajo
+
+La revisión de la literatura pone de manifiesto una tensión fundamental en la generación de campos de distancia volumétricos a partir de mallas poligonales en GPU. Por un lado, la evaluación directa de la distancia mínima punto-triángulo garantiza exactitud geométrica sobre la cuadrícula discreta, pero presenta una complejidad $\mathcal{O}(V^3 \cdot N_{\text{tris}})$ que penaliza severamente el tiempo de cómputo a medida que aumenta la densidad poligonal. Por otro lado, los métodos de propagación espacial como el algoritmo *Jump Flooding* (JFA) en tres dimensiones reducen el coste de propagación a $\mathcal{O}(V^3 \log_2 V)$, independizándolo del número de triángulos de la malla original, pero introducen errores de aproximación derivados tanto de la discretización inicial de las semillas en la superficie como de las pasadas de salto en el diagrama de Voronoi discreto [4].
+
+La aportación principal de este trabajo consiste en diseñar, implementar y comparar experimentalmente ambos enfoques bajo condiciones idénticas de hardware y resolución volumétrica, evaluando no solo la discrepancia numérica del campo generado respecto a la solución de referencia, sino también cómo afectan dichas imprecisiones a un caso de uso sensible a los errores del campo como es la iluminación global interactiva por *sphere tracing*. Asimismo, el estudio del generador basado en captura superficial y propagación JFA 3D ofrece una base metodológica extensible a escenarios donde la geometría de entrada se obtiene como proyecciones de profundidad.
+
+A partir de este análisis se formulan las siguientes hipótesis de trabajo que guiarán la evaluación experimental:
+
+- **H1 (Escalabilidad temporal):** La alternativa basada en captura superficial y propagación mediante JFA 3D presentará un tiempo de generación en GPU significativamente inferior al del método exacto punto-triángulo cuando la complejidad geométrica de la escena sea elevada ($N_{\text{tris}} \gg 10^3$), manteniéndose el coste de las pasadas de propagación prácticamente constante para una resolución volumétrica fija $V^3$.
+- **H2 (Compromiso entre precisión y consumo de memoria):** El campo generado mediante JFA 3D presentará un error numérico acotado (MAE y RMSE inferiores al tamaño métrico de un vóxel en la mayor parte del dominio) a cambio de un mayor requerimiento temporal de memoria de vídeo durante la generación debido a las texturas auxiliares del esquema *ping-pong*.
+- **H3 (Viabilidad en consultas espaciales de iluminación):** Para resoluciones volumétricas medias y altas ($128^3$ y $256^3$), las desviaciones de distancia introducidas por JFA 3D no degradarán de forma crítica la iluminación indirecta difusa de un rebote ni la oclusión ambiental al combinarse con un sesgo superficial adaptado al tamaño de vóxel, concentrándose las diferencias visuales perceptibles en las penumbras de contacto y en las cavidades geométricas finas.
 
 ---
 
 # 3. MATERIALES Y MÉTODOS
 
-## 3.1. Requisitos del sistema
+## 3.1. Estrategia de desarrollo, alternativas y decisiones técnicas
 
-Para guiar el desarrollo de los módulos de generación volumétrica y la adaptación de la infraestructura de visualización, se dividen los requisitos funcionales en dos bloques operativos y se establecen los requisitos no funcionales del sistema:
+Siguiendo la metodología de investigación en ciencias del diseño (DSRM) [5] y el enfoque incremental descritos en el Capítulo 1, el desarrollo se articula en torno a decisiones técnicas que acotan las alternativas existentes en la literatura a los objetivos del trabajo:
 
-### Requisitos funcionales: Generación e inspección volumétrica
+1. **Elección del método de referencia frente a estructuras jerárquicas en CPU:**
+   Para obtener un volumen de distancias exacto con el que contrastar la alternativa aproximada, se contemplaron dos opciones: construir una jerarquía de volúmenes envolventes (BVH) en CPU o evaluar directamente los triángulos en GPU mediante *compute shaders* leyendo desde un búfer SSBO. Se optó por la evaluación directa masivamente paralela en GPU porque evita la complejidad de mantener y recorrer árboles espaciales con divergencia de ramas en shaders, aprovecha el ancho de banda de memoria de la tarjeta gráfica y garantiza una referencia determinista exacta punto-triángulo en cada centro de vóxel. Antes de emplearlo como referencia sobre escenas complejas, su exactitud se verifica frente a geometrías de control (esfera y cubo) cuyas funciones SDF analíticas son conocidas en forma cerrada.
+2. **Diseño de la alternativa rápida (captura superficial + JFA 3D):**
+   Para desacoplar la generación del campo del número de triángulos de la malla, se eligió combinar una primera fase de extracción de semillas superficiales con una segunda fase de propagación mediante JFA en tres dimensiones ($M = \log_2 V$ pasadas con saltos $k = V / 2^{s+1}$ sobre los 26 vecinos tridimensionales y esquema de doble búfer *ping-pong*). Se decidió incluir también en el estudio las variantes $\text{JFA}+1$ y $1+\text{JFA}$ [4] para cuantificar si el coste de una pasada adicional a distancia unitaria compensa la reducción del error en las fronteras de Voronoi.
+3. **Estrategia de determinación del signo interior/exterior:**
+   Entre las tres familias revisadas en el estado del arte (pseudo-normales ponderadas por ángulo [11], conteo de intersecciones por rayos y números de enrollamiento generalizados [12]), se prioriza el trabajo con mallas cerradas o con orientación consistente de caras, combinando la información normal/topológica local con pruebas de paridad o propagación para evitar el coste cuadrático de evaluar ángulos sólidos completos en cada vóxel.
+4. **Aislamiento y validación progresiva del entorno visual (Hito OE1 y avance OE2):**
+   Un riesgo metodológico habitual al evaluar estructuras geométricas mediante renderizado es confundir los artefactos propios del trazador de rayos o del filtro de ruido con los errores del campo de distancias. Por ello, se tomó la decisión de desarrollar esta primera fase del visor en dos pasos incrementales: primero, inyectando primitivas analíticas directamente en la función de distancias del shader para validar el trazador por *sphere tracing* y el filtro SVGF sin errores de discretización; y segundo, añadiendo la visualización de texturas de distancia 3D (`GL_TEXTURE_3D`) generadas también con primitivas analíticas codificadas directamente en un *compute shader* a modo de *placeholder*, listas para ser sustituidas por las texturas generadas a partir de mallas poligonales en las fases posteriores.
 
-- **RF1. Carga y normalización de mallas poligonales:** La aplicación debe importar geometrías en formatos estándar (OBJ, glTF) mediante la biblioteca `Assimp`, calculando automáticamente su caja envolvente alineada con los ejes (AABB) y aplicando transformaciones de centrado y escalado uniforme para inscribir la geometría en el volumen de trabajo unitario $[-0.5, 0.5]^3$.
-- **RF2. Generación de SDF de referencia en GPU:** El sistema debe incorporar un módulo basado en *compute shaders* de OpenGL 4.6 que calcule la distancia euclídea mínima exacta punto-triángulo en $\mathbb{R}^3$ para cada vóxel de una cuadrícula tridimensional regular, almacenando el resultado en una textura volumétrica 3D (`GL_TEXTURE_3D`).
-- **RF3. Generación acelerada por captura superficial y JFA 3D:** El sistema debe implementar un cauce alternativo que capture los datos de la superficie poligonal mediante rasterización o voxelización en GPU y propague las distancias euclídeas mediante pasadas iterativas de *Jump Flooding Algorithm* en tres dimensiones con esquema *ping-pong*.
-- **RF4. Inspección interactiva y conmutación de campos:** La interfaz gráfica de usuario debe permitir conmutar en tiempo de ejecución entre el campo volumétrico de referencia y el campo acelerado por JFA, incorporando además un visor de cortes bidimensionales ortogonales (*slice viewer*) en los planos XY, XZ e YZ para inspeccionar la distribución del campo escalar tanto en el exterior como en el interior de la geometría.
+## 3.2. Herramientas y pila tecnológica
 
-### Requisitos funcionales: Visor de validación e iluminación
-
-- **RF5. Cauce híbrido de renderizado:** La aplicación debe rasterizar mallas poligonales a un G-Buffer primario y combinarlas espacialmente con campos de distancia volumétricos mediante trazado de caminos por GPU.
-- **RF6. Trazado de caminos en tiempo real:** El sistema debe ejecutar trazado de caminos de 1 muestra por píxel (1 SPP) con cálculo de iluminación directa multi-fuente, sombras suaves cónicas y rebotes indirectos difusos continuos.
-- **RF7. Reducción de ruido SVGF:** La canalización debe incorporar demodulación de albedo, reproyección temporal con detección de desoclusión y momentos, y filtrado espacial multiescala À-Trous en 4 pasadas.
-- **RF8. Inspección diagnóstica interactiva:** La interfaz gráfica debe permitir seleccionar modos de depuración en tiempo real (imagen final reconstruida, 1 SPP bruto, irradiancia desruidada, varianza calculada, normales y albedo superficial).
-- **RF9. Captura y verificación determinista:** El sistema debe soportar un modo de ejecución desatendido sin interfaz gráfica (`--test`) para registrar capturas a disco y calcular métricas cuantitativas reproducibles de estabilidad numérica y brillo medio.
-
-### Requisitos no funcionales
-
-- **RNF1. Estándares abiertos y portabilidad:** Uso estricto de C++20 y OpenGL 4.6 Core Profile sin recurrir a extensiones propietarias cerradas ni a APIs no portables entre fabricantes de tarjetas gráficas.
-- **RNF2. Rendimiento interactivo:** El pipeline de reconstrucción y renderizado debe mantener frecuencias de refresco interactivas (>60 FPS en visualización y entre 1.5 y 3.0 ms de tiempo de GPU para el desruidado en hardware de gama media).
-- **RNF3. Estabilidad numérica:** Los shaders deben garantizar blindaje absoluto contra indeterminaciones matemáticas, divisiones por cero, vectores nulos y propagación de valores `NaN` o `Inf`.
-- **RNF4. Parametrización del consumo de VRAM y memoria:** El sistema debe permitir configurar la resolución de la cuadrícula volumétrica en potencias de dos ($64^3$, $128^3$ y $256^3$ vóxeles), soportar formatos escalares de precisión media (`GL_R16F`) y simple (`GL_R32F`), y optimizar el ciclo de vida de los destinos de renderizado temporales del algoritmo JFA para acotar el consumo de memoria de vídeo.
-
-## 3.2. Pila tecnológica y herramientas utilizadas
-
-La Tabla 3 detalla los componentes de software, bibliotecas de terceros, compiladores y herramientas de diagnóstico empleados a lo largo del desarrollo.
+Para garantizar la portabilidad, el control explícito sobre la memoria de vídeo y la ausencia de dependencias de hardware propietario de trazado de rayos, se seleccionó una pila basada en estándares abiertos encabezada por C++20 y OpenGL 4.6 Core Profile. OpenGL 4.6 proporciona soporte nativo para *compute shaders*, acceso aleatorio de lectura y escritura a texturas tridimensionales mediante `glBindImageTexture` (`shader_image_load_store`), búferes de almacenamiento masivo SSBO con alineamiento `std430` y consultas asíncronas de tiempo en GPU (`GL_TIME_ELAPSED`). La Tabla 3 resume los componentes y herramientas utilizados.
 
 **Tabla 3. Pila tecnológica y entorno de desarrollo.**
 
 | Componente | Versión / Especificación | Propósito en el proyecto |
 | --- | --- | --- |
-| **Lenguaje de programación** | C++20 (ISO/IEC 14882:2020) | Núcleo del motor, gestión de memoria, estructuras de datos y canalización. |
-| **API Gráfica** | OpenGL 4.6 Core Profile / GLSL 4.60 | Ejecución de shaders de computación, FBOs, texturas 3D y canalización diferida. |
-| **SDL3** | Versión 3.2.0 | Creación de ventanas, contexto OpenGL, captura de eventos y temporización precisa. |
-| **GLAD** | Especificación Core 4.6 | Carga dinámica de punteros a funciones OpenGL en el host. |
-| **GLM** | Versión 1.0.1 | Álgebra lineal tridimensional, matrices de transformación, vectores y cuaterniones. |
+| **Lenguaje de programación** | C++20 (ISO/IEC 14882:2020) | Núcleo de la aplicación, gestión de recursos y coordinación del cauce en GPU. |
+| **API Gráfica** | OpenGL 4.6 Core Profile / GLSL 4.60 | Ejecución de *compute shaders*, FBOs, texturas 3D, SSBOs y canalización diferida. |
+| **SDL3** | Versión 3.2.0 | Creación de ventanas, contexto OpenGL, captura de eventos y temporización. |
+| **GLAD** | Especificación Core 4.6 | Carga dinámica de punteros a funciones de OpenGL 4.6 en el host. |
+| **GLM** | Versión 1.0.1 | Álgebra lineal tridimensional, matrices de transformación y vectores. |
 | **Assimp** | Versión 5.4+ | Importación de mallas tridimensionales (OBJ, glTF), cálculo de normales y AABB. |
-| **Dear ImGui** | Versión 1.91.8 | Interfaz gráfica inmediata para control de parámetros, diagnóstico y conmutación. |
-| **stb_image / stb_image_write** | Versión 2.30 / 1.16 | Carga de texturas auxiliares y exportación de capturas de pantalla sin pérdida. |
-| **RenderDoc** | Versión 1.3x | Depuración gráfica, inspección de texturas 3D, SSBOs y medición de *compute shaders*. |
-| **Sistema de compilación** | CMake 3.28+ con Ninja | Configuración multiplataforma y compilación incremental optimizada. |
-| **Compilador C++** | GCC 14.2 / Clang 18.1 | Generación de código binario nativo optimizado mediante `-O3`. |
-| **Hardware de desarrollo** | AMD Radeon RX 9060 XT (RDNA 4) / Mesa 26.2 | Plataforma de pruebas gráficas y ejecución del pipeline. |
+| **Dear ImGui** | Versión 1.91.8 | Interfaz gráfica para control de parámetros, diagnóstico e inspección de volúmenes. |
+| **stb_image / stb_image_write** | Versión 2.30 / 1.16 | Carga de recursos auxiliares y exportación de capturas sin pérdida. |
+| **RenderDoc** | Versión 1.3x | Inspección de texturas 3D, SSBOs, estados del pipeline y depuración de shaders. |
+| **Sistema de compilación** | CMake 3.28+ con Ninja | Configuración multiplataforma y compilación incremental. |
+| **Compilador C++** | GCC 14.2 / Clang 18.1 | Generación de código binario nativo optimizado. |
+| **Hardware de pruebas** | AMD Radeon RX 9060 XT (RDNA 4) / Mesa 26.2 | Plataforma principal de desarrollo y evaluación en GPU. |
 
 *Fuente: elaboración propia.*
 
-## 3.3. Escenas y modelos de evaluación
+## 3.3. Entorno interactivo de validación desarrollado (Hito OE1 y avance OE2)
 
-El protocolo experimental contempla dos conjuntos diferenciados de geometrías tridimensionales adaptadas a cada fase de evaluación:
+Como parte del trabajo realizado hasta esta entrega, se ha implementado y verificado la primera fase del visor interactivo que actuará como banco de pruebas experimental durante todo el proyecto. El desarrollo de este entorno se abordó de forma incremental en dos etapas sucesivas: en primer lugar, se implementaron primitivas analíticas inyectadas directamente en la función de evaluación de distancias del shader para construir y validar el trazador de caminos por *sphere tracing* a 1 muestra por píxel (1 SPP) y la reconstrucción espacio-temporal mediante SVGF [6]; en segundo lugar, se incorporó el soporte y la visualización de texturas tridimensionales de distancia (`GL_TEXTURE_3D`), generadas inicialmente mediante primitivas analíticas codificadas también de forma directa en un *compute shader* a modo de *placeholder* (marcador de posición), con el propósito de que sean sustituidas posteriormente por las texturas generadas a partir de mallas poligonales. La Figura 2 muestra el flujo de datos entre los distintos pases coordinados por la clase `renderer::PathTracerPipeline` y la Tabla 4 detalla los búferes (`Framebuffer Objects`, FBO) y texturas asociados.
 
-### Escenas de verificación del visor base (Hito OE1)
+```
+   [ Primitivas Analíticas en Shader ]    [ Textura 3D SDF (Placeholder GPU) ]
+                    │                                       │
+                    └───────────────────┬───────────────────┘
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │   Pase 1: Path Tracer SDF   │
+                         │   (1-SPP Sphere Tracing)    │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │    MRT Primario (4 Targets) │
+                         │  Illum(Demod), Norm, Pos,   │
+                         │           Albedo            │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │   Pase 2A: SVGF Temporal    │◄─── [ Historial t-1 ]
+                         │  Reproyección + Momentos    │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │   Pase 2B: SVGF À-Trous     │
+                         │  4 Pasadas Ping-Pong (2^i)  │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │      Pase 3: Resolve        │
+                         │   Re-modulación Albedo +    │
+                         │     Gamma sRGB / Debug      │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                              [ Pantalla / FBO Salida ]
+```
 
-1. **Escena 1 (Cornell Box analítica):** Entorno cerrado clásico compuesto por paredes difusas roja y verde, un panel de iluminación cenital emisor y dos cubos interiores. Permite evaluar de forma unívoca el transporte radiativo de rebote indirecto de color (*color bleeding*) y verificar que el visor no sufra pérdidas de energía ni fugas luminosas en esquinas cóncavas.
-2. **Escena 2 (Primitives Showcase):** Escena abierta gobernada por iluminación direccional exterior que combina esferas reflectantes doradas, un toroide metálico liso, operaciones booleanas suaves de unión y columnas sobre un plano infinito de pizarra pulida. Permite contrastar reflexiones especulares y la estabilidad de las discontinuidades geométricas frente al cielo.
-3. **Escena 3 (Hybrid Mesh + SDF Playground):** Escena mixta que integra la malla poligonal de Suzanne (rasterizada mediante G-Buffer a 500 triángulos) sobre un pedestal cilíndrico implícito SDF, con orbes emisores y un plano reflectante. Permite certificar el acoplamiento y arbitraje de profundidad entre geometría poligonal clásica y superficies de distancia.
+**Figura 2: Arquitectura del banco de pruebas visual con evaluación de SDF y reducción de ruido SVGF.**  
+*Fuente: elaboración propia.*
 
-### Modelos y escenas poligonales para la evaluación de generadores SDF (Hitos OE3, OE4 y OE6)
+**Tabla 4. Configuración de recursos volumétricos y Framebuffer Objects (FBO) en el visor de validación.**
 
-1. **Modelos geométricos de control (Esfera y Cubo poligonales):** Mallas sintéticas cerradas teseladas con resolución poligonal variable ($1.000$ a $20.000$ triángulos) cuyas dimensiones métricas coinciden exactamente con funciones SDF analíticas conocidas en forma cerrada:
+| Recurso / FBO       | Attachment       | Textura             | Formato interno         | Datos almacenados                                                     |
+| ------------------- | ---------------- | ------------------- | ----------------------- | --------------------------------------------------------------------- |
+| `m_sdfTexture`      | Imagen / Sampler | `Texture3D`         | `GL_R32F`               | Campo de distancias 3D generado en *compute shader* (*placeholder*)   |
+| `m_primaryFbo`      | Color 0–3        | `m_primary*`        | `GL_RGBA16F`            | Irradiancia demodulada, profundidad lineal, normal, impacto y albedo  |
+| `m_temporalFbo[2]`  | Color 0–1        | `m_temporal*`       | `GL_RGBA16F`            | Irradiancia integrada, varianza temporal, momentos ($\mu_1, \mu_2$) y longitud de historial |
+| `m_atrousPing/Pong` | Color 0          | `m_atrousPing/Pong` | `GL_RGBA16F`            | Irradiancia y varianza filtradas mediante ondículas À-Trous ($5\times 5$) |
+
+*Fuente: elaboración propia.*
+
+El funcionamiento de esta primera fase del entorno de pruebas comprende los siguientes mecanismos clave:
+
+- **Evaluación inicial con primitivas inyectadas en la función de distancias y muestreo con ruido azul (STBN):** En el primer paso de implementación del visor (`sdf_raymarching.frag`), las escenas de prueba (como la caja de Cornell y el muestrario de materiales) se definieron inyectando primitivas SDF analíticas (esferas, cajas, cilindros y planos combinados mediante operaciones booleanas) directamente en la función de distancias del shader (`fScene`). A partir de la intersección primaria obtenida por *sphere tracing*, se evalúa la iluminación directa con sombras suaves cónicas y un rebote indirecto (difuso por muestreo coseno o especular gobernado por Fresnel-Schlick [8]). Para evitar la aglomeración de ruido en bajas frecuencias propia de los generadores pseudoaleatorios de ruido blanco (PCG), se integraron máscaras de ruido azul espaciotemporal (*Spatiotemporal Blue Noise*, STBN) [9, 10] almacenadas en texturas 3D de $128 \times 128 \times 64$ texeles, que distribuyen el error estocástico en frecuencias altas fácilmente suprimibles por el filtro posterior.
+- **Visualización de texturas de distancia 3D a modo de *placeholder* (avance del Hito OE2):** Una vez validado el trazador con ecuaciones directas en el shader, se añadió el soporte para almacenar y muestrear campos de distancia discretos en texturas tridimensionales mediante las clases `Texture3D` y `ComputeShader` junto con el shader `generate_3d_sdf.comp`. En esta fase, dicho *compute shader* rellena texturas `GL_TEXTURE_3D` en formato `GL_R32F` (a resoluciones configurables de $32^3$ a $256^3$) evaluando también primitivas analíticas codificadas directamente en el propio shader (una esfera de 1 m de diámetro, un conjunto de primitivas y una habitación hueca con ventana mediante operaciones CSG). Estas texturas actúan como *placeholder* funcional para dejar resueltos y verificados el muestreo trilineal continuo en hardware, el cálculo de normales por diferencias centrales adaptadas al tamaño de vóxel (`get3DTextureNormal`) y el sesgo superficial proporcional a la resolución (`getSurfaceBias`), de modo que en la siguiente fase puedan sustituirse de forma transparente por las texturas generadas a partir de mallas poligonales.
+- **Reconstrucción espacio-temporal SVGF estabilizada:** El pase temporal (`svgf_temporal.frag`) reproyecta las muestras mediante la matriz del fotograma anterior validando la coherencia de normales, distancia planar y continuidad de superficie, y actualiza la media exponencial junto con los momentos de luminancia ($\mu_1, \mu_2$). En regiones recién desocluidas con historial corto, complementa la estimación de varianza con un vecindario espacial bilateral de $7 \times 7$. A continuación, el filtro espacial (`svgf_atrous.frag`) aplica cuatro iteraciones *ping-pong* con núcleo $B_3$-spline de $5 \times 5$ y pasos $s \in \{1, 2, 4, 8\}$ [7], ponderadas por funciones de parada de normal, profundidad planar y luminancia, antes de remodular el albedo y aplicar la corrección gamma en `linear_to_srgb.frag`.
+- **Interfaz diagnóstica y verificación del visor:** La interfaz en Dear ImGui permite alternar escenas, configurar luces, cámara y escala de resolución, conmutar entre la evaluación analítica directa y la lectura de la textura 3D *placeholder* a distintas resoluciones, e inspeccionar seis vistas diagnósticas (imagen final reconstruida, entrada bruta a 1 SPP, irradiancia desruidada, varianza estimada, normales y albedo). Sobre una GPU AMD Radeon RX 9060 XT a resolución de $960 \times 540$, el filtro SVGF completo consume aproximadamente **1,85 ms** por fotograma, manteniendo tasas superiores a **120 FPS**, y supera la batería automatizada `--test` con **0 píxeles anómalos (`NaN`/`Inf`)**. Tal como muestran la Figura 3 y la Figura 4, el visor reproduce con fidelidad tanto la transferencia indirecta de color (*color bleeding*) en la caja de Cornell como las sombras suaves y reflexiones sobre geometría SDF.
+
+![Figura 3: Escena de validación Cornell Box renderizada en tiempo real en el visor a 1 muestra por píxel con reconstrucción SVGF.](assets/scene1_denoised.png)
+Figura 3: Escena de validación Cornell Box renderizada en tiempo real en el visor a 1 muestra por píxel con reconstrucción SVGF.
+
+![Figura 4: Escena de validación con muestrario de primitivas SDF, reflexiones especulares y sombras suaves.](assets/scene2_slate_floor.png)
+Figura 4: Escena de validación con muestrario de primitivas SDF, reflexiones especulares y sombras suaves.
+
+## 3.4. Escenas de evaluación y protocolo experimental
+
+Para la evaluación comparativa de los dos métodos de generación de SDF a partir de mallas poligonales (que se ejecutará en las fases correspondientes a las entregas PEC 3 y PEC 4), se definen los siguientes modelos de entrada y métricas de análisis:
+
+### Modelos y escenas poligonales de prueba
+
+1. **Modelos geométricos de control (Esfera y Cubo poligonales):** Mallas sintéticas cerradas teseladas con densidad poligonal variable ($1.000$ a $20.000$ triángulos) cuyas dimensiones coinciden con funciones SDF analíticas conocidas en forma cerrada:
    $$f_{\text{esfera}}(p) = \|p\| - r, \quad f_{\text{cubo}}(p) = \|\max(|p| - b, 0)\| + \min(\max(|p| - b), 0)$$
-   Estas geometrías permiten verificar numéricamente la corrección y precisión absoluta del generador base de *compute shaders* antes de utilizar sus salidas como referencia.
-2. **Cornell Box poligonal:** Versión discretizada en 32 triángulos de la caja de Cornell tradicional. Proporciona una escena estanca con oclusiones controladas y ángulos rectos que permite contrastar la exactitud de los generadores en ángulos vivos interiores y evaluar la propagación de signos.
-3. **Crytek Sponza:** Escena arquitectónica histórica ampliamente adoptada en computación gráfica, compuesta por aproximadamente $262.000$ triángulos distribuidos en múltiples arcos, columnas y detalles de oclusión fina. Permite estresar la escalabilidad temporal y el consumo de VRAM de los generadores ante densidades geométricas elevadas.
+   Estas geometrías permitirán comprobar numéricamente la exactitud del generador base en *compute shaders* antes de emplear sus volúmenes como referencia.
+2. **Cornell Box poligonal:** Versión discretizada en triángulos de la caja de Cornell tradicional, utilizada para evaluar el comportamiento de ambos generadores en recintos cerrados con ángulos diedros rectos y oclusiones controladas.
+3. **Crytek Sponza:** Escena arquitectónica compuesta por aproximadamente $262.000$ triángulos con arcos, columnas y detalles geométricos complejos, destinada a evaluar la escalabilidad temporal y el consumo de memoria ante un número elevado de primitivas.
 
-## 3.4. Protocolo experimental y metodología DSRM
+### Protocolo de medición y métricas cuantitativas
 
-Siguiendo las directrices del marco DSRM [5], la evaluación experimental se estructura en dos fases secuenciales:
-
-### Fase 1: Validación del banco de pruebas visual (Hito OE1 completado)
-
-La infraestructura de visualización e inspección se somete a un protocolo de verificación dual:
-
-- **Inspección interactiva cualitativa:** Navegación libre mediante cámara orbital y en primera persona, monitorizando la presencia de ebullición temporal (*boiling*), estelas de movimiento (*ghosting*) en desoclusiones violentas y fidelidad de los reflejos.
-- **Medición cuantitativa determinista:** Ejecución desatendida mediante el argumento de línea de comandos `--test`, que procesa secuencialmente las escenas de prueba durante un número prefijado de fotogramas (20 fotogramas estáticos y móviles por escena), calculando la luminancia media global del búfer mediante lecturas `glReadPixels` y verificando la ausencia total de píxeles negros espurios o indeterminaciones numéricas (`NaN` / `Inf`).
-
-### Fase 2: Protocolo de evaluación comparativa de generadores SDF (Hitos OE3, OE4 y OE6)
-
-Durante las fases de ejecución experimental de la PEC 3 y PEC 4, los dos métodos generadores se compararán sistemáticamente bajo condiciones idénticas de GPU y dimensiones de volumen ($64^3, 128^3, 256^3$), extrayendo tres métricas cuantitativas clave:
+Los dos generadores se compararán bajo condiciones idénticas de GPU, formato de almacenamiento (`GL_R16F` y `GL_R32F`) y resolución volumétrica ($64^3, 128^3$ y $256^3$ vóxeles), registrando tres métricas principales:
 
 1. **Tiempo de generación en GPU (ms):**
-   Se aislará la ejecución de los *compute shaders* de generación frente a las operaciones de la CPU o el renderizado de la ventana mediante el uso de consultas asíncronas de temporización de OpenGL:
-
-   ```cpp
-   GLuint queryId;
-   glGenQueries(1, &queryId);
-   glBeginQuery(GL_TIME_ELAPSED, queryId);
-   // Despacho de compute shaders (Método Base o JFA 3D)
-   glEndQuery(GL_TIME_ELAPSED);
-   GLuint64 timeElapsedNs;
-   glGetQueryObjectui64v(queryId, GL_QUERY_RESULT, &timeElapsedNs);
-   float timeMs = static_cast<float>(timeElapsedNs) / 1000000.0f;
-   ```
-
+   Se aislará el tiempo de ejecución de los *compute shaders* de generación respecto a la CPU y al renderizado del visor mediante objetos de consulta asíncrona de OpenGL (`GL_TIME_ELAPSED`).
 2. **Consumo de memoria de vídeo VRAM (MB):**
-   Se contabilizará el tamaño estático en megabytes ocupado por la textura volumétrica final (`GL_TEXTURE_3D`) y se monitorizarán mediante RenderDoc las estructuras de memoria temporal y texturas *ping-pong* requeridas durante las pasadas intermedias del algoritmo JFA en función del formato de almacenamiento (`GL_R16F` frente a `GL_R32F`).
+   Se contabilizará la memoria estática ocupada por la textura volumétrica de salida (`GL_TEXTURE_3D`) junto con la memoria temporal adicional requerida durante la generación (búferes SSBO de geometría y texturas *ping-pong* de coordenadas de semillas en JFA 3D).
 3. **Error numérico del campo de distancias:**
-   Tomando el volumen generado por el método base de cálculo exacto punto-triángulo como campo de referencia $f_{\text{ref}}(i, j, k)$, se calcularán vóxel a vóxel sobre el total de la cuadrícula $V_x \times V_y \times V_z = V^3$ las siguientes métricas de discrepancia con el volumen obtenido mediante JFA $f_{\text{JFA}}(i, j, k)$:
+   Tomando el volumen generado por el método base de cálculo exacto punto-triángulo como campo de referencia $f_{\text{ref}}(i, j, k)$, se evaluarán vóxel a vóxel sobre los $V^3$ elementos de la cuadrícula las siguientes métricas de discrepancia frente al volumen obtenido mediante JFA $f_{\text{JFA}}(i, j, k)$:
    - **Error Absoluto Medio (MAE, *Mean Absolute Error*):**
      $$\text{MAE} = \frac{1}{V^3} \sum_{i=1}^{V_x} \sum_{j=1}^{V_y} \sum_{k=1}^{V_z} \left| f_{\text{JFA}}(i, j, k) - f_{\text{ref}}(i, j, k) \right|$$
    - **Error Cuadrático Medio (RMSE, *Root Mean Square Error*):**
@@ -580,376 +610,21 @@ Durante las fases de ejecución experimental de la PEC 3 y PEC 4, los dos métod
 
 ---
 
-# 4. DISEÑO E IMPLEMENTACIÓN
+# 4. DISEÑO
 
-## 4.1. Arquitectura general del sistema
-
-El sistema se estructura mediante una arquitectura modular en C++20 desacoplada en dos subsistemas principales: el subsistema de generación de campos de distancia volumétricos en GPU y el subsistema de visualización interactiva y reconstrucción espacio-temporal. La Figura 2 ilustra el flujo integral de datos desde la importación de la malla poligonal hasta la visualización y análisis de las texturas tridimensionales resultantes.
-
-```
-       [ Malla Poligonal (OBJ/glTF) ]
-                     │
-                     ▼
-             ┌───────────────┐
-             │ Carga: Assimp │
-             └───────┬───────┘
-                     │ Vértices / Índices normalizados
-                     ▼
-       ┌─────────────────────────────┐
-       │   Almacenamiento Geometría  │
-       │     SSBO (std430) / VAO     │
-       └──────────────┬──────────────┘
-                      │
-         ┌────────────┴────────────────────────┐
-         │                                     │
-         ▼                                     ▼
- ┌───────────────────────┐         ┌─────────────────────────┐
- │   Módulo 1 (OE3)      │         │     Módulo 2 (OE4)      │
- │  Compute Shader Ref   │         │    G-Buffer + JFA 3D    │
- │  Distancia Exacta     │         │   Propagación Rápida    │
- │   Punto-Triángulo     │         │  Ping-Pong (log2 V)     │
- └───────────┬───────────┘         └────────────┬────────────┘
-             │                                  │
-             └────────────────┬─────────────────┘
-                              ▼
-               ┌───────────────────────────────┐
-               │    Volumen 3D SDF Destino     │
-               │   GL_TEXTURE_3D (R32F/R16F)   │
-               └──────────────┬────────────────┘
-                              │
-               ┌──────────────┴────────────────┐
-               │                               │
-               ▼                               ▼
- ┌───────────────────────────┐   ┌───────────────────────────┐
- │  Inspector de Cortes 2D   │   │     Visor Interactivo     │
- │       (OE5 - ImGui)       │   │    PathTracerPipeline     │
- │  Planos Ortogonales XY/XZ │   │     (OE1, OE2 - SVGF)     │
- └───────────────────────────┘   └───────────────────────────┘
-```
-
-**Figura 2: Arquitectura general del sistema y flujo de datos de generación y visualización de SDF.**  
-*Fuente: elaboración propia.*
-
-El flujo comienza con la lectura de la malla mediante la clase importadora basada en Assimp, que normaliza los vértices a las dimensiones métricas del volumen y los transfiere a la GPU mediante búferes SSBO organizados bajo el diseño estándar `std430`. Dependiendo de la selección del usuario en la interfaz gráfica, se despacha el Módulo 1 (generador exacto por *compute shader*) o el Módulo 2 (generador rápido basado en captura de superficie y propagación JFA 3D). Ambos módulos depositan su resultado en un objeto de textura tridimensional de OpenGL (`GL_TEXTURE_3D`), el cual es consumido concurrentemente por el inspector de cortes bidimensionales ortogonales y por el cauce de trazado de caminos híbrido con desruidado SVGF.
-
-## 4.2. Diseño arquitectónico de los generadores de SDF en GPU (OE3 y OE4)
-
-### Empaquetado de geometrías en Shader Storage Buffer Objects (SSBO)
-
-Para garantizar un acceso coalescente de alta velocidad a la memoria de la tarjeta gráfica durante la ejecución de los *compute shaders*, los triángulos de la malla poligonal se empaquetan en el host en estructuras alineadas a 16 bytes que respetan la disposición de memoria `std430` de OpenGL:
-
-```glsl
-struct GpuTriangle {
-    vec4 v0;      // Coordenadas x, y, z del vértice 0 (w reservado)
-    vec4 v1;      // Coordenadas x, y, z del vértice 1 (w reservado)
-    vec4 v2;      // Coordenadas x, y, z del vértice 2 (w reservado)
-    vec4 normal;  // Normal del plano de la cara (nx, ny, nz) y área (w)
-};
-
-layout(std430, binding = 0) readonly buffer MeshTriangleSSBO {
-    uint u_triangleCount;
-    uint u_padding[3];
-    GpuTriangle u_triangles[];
-};
-```
-
-### Configuración de grupos de trabajo en Compute Shaders
-
-El generador de referencia por *compute shader* (`sdf_reference.comp`) y los pasos de propagación de JFA (`jfa_step.comp`) estructuran sus invocaciones en grupos de trabajo tridimensionales simétricos de $8 \times 8 \times 8$ hilos (512 invocaciones por grupo de trabajo local):
-
-```glsl
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-layout(binding = 0, r32f) uniform writeonly image3D u_outputSdfVolume;
-```
-
-Para una cuadrícula de resolución $V^3$, el host despacha un número de grupos de trabajo calculado dinámicamente mediante `glDispatchCompute((V + 7) / 8, (V + 7) / 8, (V + 7) / 8)`. La vinculación entre el shader y la textura de destino se efectúa mediante `glBindImageTexture` con formato `GL_R32F` (o `GL_R16F`), permitiendo escrituras aleatorias sin bloqueo sobre la cuadrícula volumétrica.
-
-### Esquema de doble búfer (Ping-Pong) para pasadas JFA 3D
-
-El generador alternativo JFA 3D gestiona dos texturas volumétricas intermedias (`m_jfaPing` y `m_jfaPong`) que almacenan las coordenadas tridimensionales de las semillas propagadas. El algoritmo ejecuta una secuencia iterativa de $\log_2 V$ despachos en los que se invierte el rol de entrada/salida entre texturas:
-
-- En la iteración $s$, se enlaza la textura $A$ como muestreador continuo (`sampler3D`) o imagen de lectura (`image3D`), y la textura $B$ como destino de escritura (`image3D`).
-- Tras cada despacho, se inserta una barrera de sincronización en GPU mediante `glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT)`.
-- Se actualiza la variable uniforme `u_stepLength` al valor $k = V / 2^{s+1}$, repitiendo el proceso hasta completar la pasada final con $k=1$ (o $k=1$ repetido en la variante $\text{JFA}+1$).
-
-### Muestreo trilineal y cálculo de normales por diferencias centrales (Hito OE2)
-
-Una vez que el volumen tridimensional está horneado en la textura `GL_TEXTURE_3D`, el cauce de renderizado abandona la evaluación analítica de fórmulas para consultar el campo escalar mediante muestreo acelerado por hardware:
-
-```glsl
-float sampleDistanceField(vec3 worldPos) {
-    vec3 uvw = (worldPos - u_volumeMin) / u_volumeExtents;
-    if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) {
-        return 1e5; // Fuera del dominio volumétrico
-    }
-    return texture(u_sdfVolumeSampler, uvw).r;
-}
-```
-
-La interpolación trilineal implementada en el silicio de la GPU proporciona continuidad $\mathcal{C}^0$ en el campo de distancias muestreado. Para recuperar el vector normal unitario de superficie durante el *sphere tracing* o el sombreado de rebotes, se implementa el cálculo de gradientes por diferencias centrales tridimensionales, adaptando el paso numérico de muestreo $\epsilon$ al tamaño métrico del vóxel espacial ($\Delta x_{\text{vóxel}} = \text{extents} / V$):
-
-$$\nabla f(p) \approx \frac{1}{2 \epsilon} \begin{pmatrix} f(p + \epsilon e_x) - f(p - \epsilon e_x) \\ f(p + \epsilon e_y) - f(p - \epsilon e_y) \\ f(p + \epsilon e_z) - f(p - \epsilon e_z) \end{pmatrix}, \quad n = \text{normalize}(\nabla f(p))$$
-
-Esta adaptación resuelve la cancelación catastrófica de subpíxel y previene artefactos de cuantización en las superficies reconstruidas.
-
-Como exploración técnica preliminar en esta PEC 2 (cumpliendo la estrategia incremental definida en la Sección 1.4), se ha implementado la clase `Texture3D` (que gestiona texturas `GL_TEXTURE_3D` en formato `GL_R32F` para resoluciones de $32^3, 64^3, 128^3$ y $256^3$) junto con un *compute shader* generador de volúmenes de control (`generate_3d_sdf.comp` apoyado en `hg_sdf.glsl`). Este módulo permite hornear en GPU tres configuraciones analíticas de prueba (*Bake Modes*): una esfera de 1 metro de diámetro (Modo 0), el conjunto de primitivas geométricas (Modo 1) y una habitación cúbica hueca con ventana sustraída mediante operaciones booleanas CSG (Modo 2). Asimismo, en `sdf_raymarching.frag` se ha validado el cálculo de normales por diferencias centrales (`get3DTextureNormal`) y un sesgo de superficie adaptativo al tamaño de vóxel (`getSurfaceBias`) que evita artefactos de auto-intersección (*shadow acne*) en resoluciones discretas bajas.
-
-## 4.3. Diseño e implementación del visor interactivo y cauce SVGF (Hito OE1 completado)
-
-Para cumplir con el hito **OE1**, se ha implementado de forma íntegra la canalización gráfica coordinada por la clase `renderer::PathTracerPipeline`. La canalización orquesta la asignación de recursos en GPU y la ejecución secuencial de cuatro pases de renderizado diferido y reducción de ruido. La Figura 3 detalla la arquitectura de framebuffers y el flujo de datos entre las distintas etapas.
-
-```
-       [ Geometría Poligonal ]                  [ Escena SDF Analítica ]
-                 │                                         │
-                 ▼                                         ▼
-      ┌─────────────────────┐                   ┌─────────────────────┐
-      │   Pase 1: G-Buffer   │                  │ Pase 2: Path Tracer │
-      │    Rasterizado      │                   │    1-SPP Híbrido    │
-      └──────────┬──────────┘                   └──────────┬──────────┘
-                 │ (Albedo, Pos, Normal, Depth)            │
-                 └───────────────────┬─────────────────────┘
-                                     ▼
-                      ┌─────────────────────────────┐
-                      │    MRT Primario (4 Targets) │
-                      │  Illum(Demod), Norm, Pos,   │
-                      │           Albedo            │
-                      └──────────────┬──────────────┘
-                                     │
-                                     ▼
-                      ┌─────────────────────────────┐
-                      │   Pase 3A: SVGF Temporal    │◄─── [ Historial t-1 ]
-                      │  Reproyección + Clamping    │
-                      └──────────────┬──────────────┘
-                                     │
-                                     ▼
-                      ┌─────────────────────────────┐
-                      │   Pase 3B: SVGF À-Trous     │
-                      │  4 Pasadas Ping-Pong (2^i)  │
-                      └──────────────┬──────────────┘
-                                     │
-                                     ▼
-                      ┌─────────────────────────────┐
-                      │      Pase 4: Resolve        │
-                      │   Re-modulación Albedo +    │
-                      │     Gamma sRGB / Debug      │
-                      └──────────────┬──────────────┘
-                                     │
-                                     ▼
-                           [ Pantalla / FBO Salida ]
-```
-
-**Figura 3: Arquitectura del pipeline híbrido de renderizado y reducción de ruido SVGF.**  
-*Fuente: elaboración propia.*
-
-La Tabla 4 resume los objetivos de render múltiple (*Multiple Render Targets*, MRT) y las especificaciones de textura asociadas a cada pase.
-
-**Tabla 4. Configuración de texturas y Framebuffer Objects (FBO) en la canalización.**
-
-| FBO                 | Attachment       | Textura             | Formato interno         | Datos almacenados                                                     |
-| ------------------- | ---------------- | ------------------- | ----------------------- | --------------------------------------------------------------------- |
-| `m_gbufferFbo`      | Color 0          | `m_gbufferAlbedo`   | `GL_RGBA16F`            | RGB: Albedo difuso, A: Intensidad especular                           |
-|                     | Color 1          | `m_gbufferWorldPos` | `GL_RGBA16F`            | RGB: Coordenadas de mundo, A: Máscara de validez                      |
-|                     | Color 2          | `m_gbufferNormal`   | `GL_RGBA16F`            | RGB: Normal en espacio de mundo                                       |
-|                     | Color 3          | `m_gbufferMaterial` | `GL_R32I`               | R: Índice de material                                                 |
-|                     | Depth            | `m_depthTexture`    | `GL_DEPTH_COMPONENT32F` | Profundidad del rasterizador de mallas                                |
-| `m_primaryFbo`      | Color 0          | `m_primaryIllum`    | `GL_RGBA16F`            | RGB: Irradiancia demodulada, A: Profundidad lineal                    |
-|                     | Color 1          | `m_primaryNormal`   | `GL_RGBA16F`            | RGB: Normal de superficie, A: Máscara de impacto (Hit)                |
-|                     | Color 2          | `m_primaryWorldPos` | `GL_RGBA16F`            | RGB: Posición espacial del impacto primario                           |
-|                     | Color 3          | `m_primaryAlbedo`   | `GL_RGBA16F`            | RGB: Albedo superficial reflectivo                                    |
-| `m_temporalFbo[2]`  | Color 0          | `m_temporalIllum`   | `GL_RGBA16F`            | RGB: Irradiancia integrada, A: Varianza temporal                      |
-|                     | Color 1          | `m_temporalMoments` | `GL_RGBA16F`            | R: Momento 1, G: Momento 2, B: Longitud de historial                  |
-| `m_atrousPing/Pong` | Color 0          | `m_atrousPing/Pong` | `GL_RGBA16F`            | RGB: Irradiancia filtrada, A: Varianza filtrada                       |
-| Sin FBO propio      | Copia de textura | `m_filteredHistory` | `GL_RGBA16F`            | RGB: Resultado de la primera iteración espacial, A: Varianza filtrada |
-
-*Fuente: elaboración propia.*
-
-### Pase 1: G-Buffer geométrico de mallas
-
-El shader de vértices `geometry.vert` transforma la geometría mediante la matriz vista-proyección (`u_camMatrix`), calculando la posición en espacio de mundo y las normales de los vértices. El shader de fragmentos `gbuffer.frag` escribe en cuatro destinos simultáneos. Se calculan las profundidades frontales y se ejecuta una segunda pasada con culling invertido (`GL_FRONT`) en `m_backDepthFbo` para almacenar el búfer de profundidad posterior, permitiendo que las mallas poligonales generen aproximaciones de volumen (*slabs*) para proyecciones de sombras cónicas en el SDF.
-
-### Pase 2: Trazador de caminos híbrido sobre SDF
-
-El shader `sdf_raymarching.frag` opera como un cuadrilátero a pantalla completa. Para cada píxel:
-
-1. **Arbitraje de profundidad:** Se consulta la profundidad linealizada de la malla $z_{\text{mesh}}$ y se compara con la distancia del rayo marchado sobre la geometría implícita $z_{\text{sdf}}$. Si la malla se encuentra por delante ($z_{\text{mesh}} < z_{\text{sdf}}$), se toman sus atributos geométricos como punto de origen de la trayectoria luminosa.
-2. **Evaluación de radiancia:** Se ejecuta la función `pathTrace(p, rd, albedo, matId, normal, seed)`. Se calcula la iluminación directa de hasta 8 fuentes luminosas mediante rayos de sombra con avance de esferas, combinando componentes difusas y especulares según el modelo de Fresnel-Schlick:
-   $$F(N, \omega_o) = F_0 + (1 - F_0)(1 - \max(0, N \cdot \omega_o))^5$$
-3. **Muestreo indirecto:** En cada rebote sucesivo, se selecciona estocásticamente entre reflexión especular (reflejando el rayo y aplicando un desenfoque proporcional a la rugosidad) o dispersión difusa generada por muestreo ponderado por el coseno en el hemisferio unitario (`cosineSampleHemisphere`).
-4. **Demodulación de albedo:** En modo SVGF, la radiancia acumulada se divide por el albedo del impacto primario:
-   $$E = \frac{L}{\max(\rho, 0.05)}$$
-   Esto separa la señal de baja frecuencia de la iluminación respecto a las altas frecuencias del material, facilitando un filtrado espacial homogéneo.
-5. **Muestreo estocástico mediante ruido azul espaciotemporal (STBN):** Se integraron texturas de NVIDIA STBN [9], [10] para reducir la energía del ruido en bajas frecuencias y facilitar su filtrado. Se cargan dos volúmenes `GL_RGBA8` de $128 \times 128 \times 64$ texeles y se avanza una capa temporal por fotograma, con repetición cada 64 fotogramas. Se asignan desplazamientos espaciales fijos mediante la secuencia $R_2$ a la selección de lóbulo, las direcciones difusa y especular, la consulta de material y cada fuente luminosa de cada rebote. Se consulta cada volumen mediante `texelFetch`, sin interpolación ni rotaciones de los valores muestreados. Se mantienen las mismas reglas de iluminación y limitación de radiancia en los modos PCG y STBN para permitir su comparación. La conservación del espectro de las muestras se verificó mediante análisis numérico; no se ha cuantificado todavía la reducción visual de la ebullición en las escenas.
-
-### Pase 3: Pipeline de reducción de ruido SVGF
-
-#### Reproyección temporal y detección de desoclusiones
-
-El shader `svgf_temporal.frag` proyecta la posición en espacio de mundo $p$ del píxel actual hacia el espacio de pantalla del fotograma precedente mediante la matriz `u_prevViewProj`:
-
-$$\text{clip}_{\text{prev}} = \mathbf{V}\mathbf{P}_{\text{prev}} \cdot \begin{pmatrix} p \\ 1 \end{pmatrix}, \quad \text{uv}_{\text{prev}} = \frac{\text{clip}_{\text{prev}}.xy}{\text{clip}_{\text{prev}}.w} \cdot 0.5 + 0.5$$
-
-Una muestra histórica se considera válida únicamente si verifica simultáneamente:
-
-- Pertenencia a las coordenadas normalizadas de la ventana: $\text{uv}_{\text{prev}} \in [0, 1]^2$.
-- Coherencia geométrica de normales: $N_{\text{curr}} \cdot N_{\text{prev}} > 0.75$.
-- Coherencia en distancia planar: $|N_{\text{curr}} \cdot (p_{\text{curr}} - p_{\text{prev}})| < 0.15$.
-- Continuidad de superficie frente al cielo: $\text{hit}_{\text{prev}} > 0.5$.
-
-#### Acumulación de historial y estimación de varianza
-
-Se rechaza el historial tras un reinicio explícito, un cambio de escena o un redimensionado. Con la cámara inmóvil, se consulta el mismo píxel; durante el movimiento, se validan por separado las cuatro muestras de reproyección. También se rechazan las proyecciones situadas detrás de la cámara anterior. Se acumulan el color y los momentos de luminancia sin aplicarles recortes temporales distintos. Cuando se dispone de menos de cuatro fotogramas de historial, se complementa la varianza temporal con una estimación espacial bilateral de luminancia en un vecindario de $7 \times 7$. Asimismo, durante los primeros fotogramas tras una desoclusión (*history fix*), se combina la muestra actual con dicho promedio espacial para estabilizar regiones recién descubiertas sin generar estelas de ruido. Se actualiza la muestra integrada mediante un factor de mezcla exponencial gobernado por la longitud del historial $h$:
-
-$$\alpha = \max\left(\alpha_{\text{base}}, \frac{1}{h}\right), \quad E_{\text{int}} = (1 - \alpha) E_{\text{hist}} + \alpha E_{\text{curr}}$$
-
-La varianza del estimador acumulado se escala por el factor $\frac{\alpha}{2 - \alpha}$, reflejando la reducción de incertidumbre conforme converge la media temporal. Para evitar la acumulación recursiva de desenfoque espacial a lo largo del tiempo, se almacena en el búfer de historial la irradiancia integrada temporalmente sin aplicar filtros espaciales previos.
-
-#### Filtrado espacial multiescala À-Trous
-
-El shader `svgf_atrous.frag` ejecuta iteraciones ping-pong sucesivas con desplazamientos de muestreo base $s \in \{1, 2, 4, 8\}$ píxeles, evaluando una rejilla regular de $5 \times 5$ muestras con coeficientes cúbicos $B_3$-spline: $h = [1/16, 1/4, 3/8, 1/4, 1/16]$. Para cada muestra adyacente $q$, el peso de parada $w(p, q)$ combina tres términos:
-
-$$w(p, q) = w_h(p, q) \cdot w_n(p, q) \cdot w_z(p, q) \cdot w_l(p, q)$$
-
-- **Peso de normal:** $w_n(p, q) = (\max(0, N_p \cdot N_q))^{\sigma_n}$, donde $\sigma_n \approx 32.0$.
-- **Peso de profundidad planar:** $w_z(p, q) = \exp\left(-\frac{|N_p \cdot (p - q)|}{\sigma_z}\right)$, con $\sigma_z \approx 0.1$.
-- **Peso de luminancia adaptado por varianza:** $w_l(p, q) = \exp\left(-\frac{|l(p) - l(q)|}{\sigma_l \sqrt{g_{3\times3}(\text{Var})(p)} + \epsilon}\right)$, con $\sigma_l \approx 4.0$.
-
-El radio de muestreo se adapta dinámicamente según la longitud del historial: los píxeles con historial corto ensanchan su paso espacial de forma proporcional a $\sqrt{N_{\text{asentado}} / N_{\text{píxel}}}$ hasta un factor máximo configurable, acelerando la supresión de ruido en áreas de desoclusión, mientras que los píxeles asentados conservan el radio estándar para proteger los detalles geométricos y las penumbras de sombra suave. Se aplica un prefiltrado gaussiano de $3 \times 3$ a la varianza utilizada por el peso de luminancia y se propaga la varianza de cada muestra ponderada por los pesos al cuadrado.
-
-### Pase 4: Composición final e inspección diagnóstica
-
-En `linear_to_srgb.frag`, se multiplica la irradiancia filtrada por el albedo original ($L = E_{\text{filt}} \cdot \rho$), se aplica un ajuste de contraste parametrizado y se efectúa la conversión del espacio lineal a sRGB mediante corrección gamma ($\gamma = 2.2$):
-
-$$C_{\text{sRGB}} = \text{clamp}(C_{\text{linear}}, 0, 1)^{1 / 2.2}$$
-
-La Tabla 5 describe los seis modos diagnósticos implementados en la interfaz Dear ImGui para inspeccionar las diferentes fases del cauce en tiempo real.
-
-**Tabla 5. Modos de inspección diagnóstica en tiempo real.**
-
-| Modo | Nombre en interfaz | Señal visualizada | Utilidad técnica |
-| --- | --- | --- | --- |
-| 0 | Final Denoised | $E_{\text{filt}} \cdot \rho$ (gamma corregida) | Resultado final completo reconstruido por SVGF. |
-| 1 | Raw 1-SPP | $L_{\text{bruta}}$ (1 muestra por píxel) | Inspección de la varianza estocástica de entrada sin filtrar. |
-| 2 | Denoised Irradiance | $E_{\text{filt}}$ (sin modulación de albedo) | Inspección del transporte de radiancia pura y sangrado de color. |
-| 3 | Estimated Variance | $\sqrt{\text{Var}(p)}$ (falso color) | Visualización del mapa de incertidumbre y convergencia temporal. |
-| 4 | Surface Normals | $N \cdot 0.5 + 0.5$ | Verificación de la orientación y continuidad geométrica. |
-| 5 | Surface Albedo | $\rho^{1/2.2}$ | Validación del búfer de reflectancia desacoplado. |
-
-*Fuente: elaboración propia.*
-
-### Resolución de anomalías de contorno y robustez numérica
-
-A lo largo de la implementación se identificaron y solventaron anomalías críticas en las fronteras geométricas:
-
-1. **Corrección de líneas de contorno en el cielo:** Inicialmente, los rayos que alcanzaban la distancia máxima `u_far` eran clasificados erróneamente como superficies debido al escalado planar de la profundidad en direcciones oblicuas ($z_{\text{planar}} = u_{\text{far}} \cdot |\omega_z| < u_{\text{far}}$). Esto forzaba el cálculo de gradientes de distancia espurios en el aire y la demodulación sobre albedos de suelo lejanos. Se introdujo una condición estricta de acierto (`sdfHit = object < u_far && sceneSdf < eps`) que garantiza que los rayos que escapan al infinito preserven la radiancia limpia del cielo sin ser procesados por los filtros de superficie.
-2. **Erradicación del parpadeo en siluetas de mallas poligonales:** El muestreo continuo de las texturas del G-Buffer con coordenadas sujetas a perturbación estocástica de subpíxel (*ray jitter*) provocaba que, en las fronteras de los triángulos, la coordenada de muestreo cayera fuera del polígono hacia texeles no rasterizados (`vec4(0.0)`). Esto producía albedos y posiciones nulos, manifestados como un ribete negro parpadeante en la silueta. La sustitución sistemática de `texture()` por `texelFetch(..., ivec2(gl_FragCoord.xy), 0)` garantizó una indización discreta exacta por píxel, eliminando por completo cualquier sangrado con el color de fondo.
-3. **Protección contra singularidades y valores `NaN`:** Se incorporaron comprobaciones de longitud mínima antes de cada normalización vectorial (gradientes numéricos de normales $\nabla f(p)$, vectores de reflexión de dispersión especular y cálculo del vector medio $H = \text{normalize}(L - \omega)$), complementadas con guardas `isnan()` y `isinf()` que sustituyen inmediatamente cualquier indeterminación matemática por valores energéticos seguros.
-4. **Estimación de varianza con historial corto:** Se excluyen las muestras de cielo y los valores no finitos del vecindario espacial de luminancia. Se ponderan las muestras por la concordancia de normales, la distancia planar y la distancia en pantalla para reducir la mezcla entre superficies distintas.
-
-## 4.4. Verificación experimental del visor de partida (Validación del Hito OE1)
-
-Con el propósito de validar empíricamente que el entorno de visualización interactivo (Hito OE1) opera como un banco de pruebas fiable y estable antes de inyectar las texturas volumétricas 3D generadas a partir de mallas en la PEC 3, se ha completado una batería exhaustiva de verificación cualitativa y cuantitativa. Los resultados certifican que la canalización gráfica alcanza tasas de refresco interactivas holgadas (>120 FPS), con un coste específico del filtro SVGF de 1.85 ms y una inmunidad total frente a anomalías numéricas (0 píxeles anómalos o negros espurios).
-
-### Comparación cualitativa y visual
-
-Las Figuras 4 a 8 documentan los resultados visuales alcanzados en las tres escenas de prueba.
-
-Tal como muestra la Figura 4, el algoritmo SVGF en la Escena 1 (Cornell Box) logra reconstruir un campo de iluminación indirecta suave y continuo a partir de solo 1 SPP. La transferencia de color (*color bleeding*) en las caras laterales de los cubos y la pared trasera se reproduce de manera estable sin introducir artefactos de desenfoque excesivo en las esquinas interiores ni en las aristas vivas.
-
-![Figura 4: Escena 1 (Cornell Box) renderizada en tiempo real mediante SVGF a 1 muestra por píxel.](assets/scene1_denoised.png)
-Figura 4: Escena 1 (Cornell Box) renderizada en tiempo real mediante SVGF a 1 muestra por píxel.
-
-En la Escena 2 (Figura 5), la sustitución del patrón procedural repetitivo por un material de pizarra de estudio uniforme eliminó el aliasing estocástico en la lejanía. El filtro de parada por normales preserva la curvatura nítida del toroide metálico y las reflexiones especulares de las esferas doradas, manteniendo la coherencia espacial del plano de suelo.
-
-![Figura 5: Escena 2 (Muestrario de primitivas SDF) con material de pizarra pulida.](assets/scene2_slate_floor.png)
-Figura 5: Escena 2 (Muestrario de primitivas SDF) con material de pizarra pulida.
-
-La Figura 6 ilustra el modo diagnóstico de irradiancia desruidada en la misma escena, evidenciando la completa desaparición de los artefactos circulares y las discontinuidades que previamente afectaban a la transición entre la geometría y el cielo.
-
-![Figura 6: Descomposición de iluminación: modo diagnóstico de irradiancia desruidada frente a cielo limpio.](assets/scene2_irradiance_fixed.png)
-Figura 6: Descomposición de iluminación: modo diagnóstico de irradiancia desruidada frente a cielo limpio.
-
-La Figura 7 y la Figura 8 demuestran la solidez de la integración híbrida en la Escena 3. En la Figura 7, el encuadre enfocado de Suzanne directamente contra el cielo muestra una silueta continua y limpia, exenta del moteado oscuro que previamente introducía el desacoplo de muestreo en el G-Buffer. La Figura 8 muestra la vista canónica de la composición híbrida, integrando armoniosamente la oclusión y el sombreado suave de la malla poligonal sobre el pedestal geométrico SDF.
-
-![Figura 7: Escena 3 (Híbrida malla poligonal + SDF) con silueta limpia de Suzanne contra el cielo.](assets/scene3_against_sky_clean.png)
-Figura 7: Escena 3 (Híbrida malla poligonal + SDF) con silueta limpia de Suzanne contra el cielo.
-
-![Figura 8: Vista canónica de la Escena 3 con mono y pedestal sobre suelo reflectante.](assets/scene3_canonical_clean.png)
-Figura 8: Vista canónica de la Escena 3 con mono y pedestal sobre suelo reflectante.
-
-### Evaluación cuantitativa y rendimiento
-
-La Tabla 6 recoge las métricas de brillo medio y tiempo de ejecución registradas mediante la batería automatizada de pruebas sobre una GPU AMD Radeon RX 9060 XT a resolución nativa de $960 \times 540$ píxeles.
-
-**Tabla 6. Métricas registradas en la suite de pruebas automatizadas deterministas.**
-
-| Escena | Nombre de escena | Luminancia media calculada | Píxeles con error numérico (NaN / Negro espurio) | Estado de validación |
-| --- | --- | --- | --- | --- |
-| **Escena 1** | Cornell Box | 0.3160 | 0 | Superada con éxito |
-| **Escena 2** | Primitives Showcase | 0.4501 | 0 | Superada con éxito |
-| **Escena 3** | Hybrid Mesh + SDF | 0.5601 | 0 | Superada con éxito |
-
-*Fuente: elaboración propia.*
-
-El conteo sistemático de píxeles negros espurios mediante análisis automatizado sobre los archivos exportados confirmó la presencia de **0 píxeles anómalos** en la totalidad de la imagen, demostrando la estabilidad numérica de la solución implementada. La canalización completa de SVGF (reproyección temporal, 4 pasadas de filtro À-Trous y resolución final) consume aproximadamente **1.85 ms** de tiempo de GPU, permitiendo alcanzar tasas de refresco superiores a los 120 fotogramas por segundo cuando se combina con el trazador primario de 1 SPP.
+*(Este capítulo se desarrollará en la PEC 3)*
 
 ---
 
 # 5. RESULTADOS
 
-*Nota metodológica sobre el estado de la entrega (PEC 2):*  
-De acuerdo con la planificación temporal establecida en el Capítulo 1, en la presente entrega de la PEC 2 se ha completado la infraestructura de visualización e inspección (Hito OE1, validado en la Sección 4.4) y el diseño arquitectónico de los generadores (OE3 y OE4). Los ensayos experimentales comparativos definitivos entre ambos métodos de generación volumétrica se ejecutarán e integrarán durante la PEC 3 y PEC 4. En este capítulo se expone la estructura formalmente planificada para reportar y analizar dichos resultados.
-
-## 5.1. Comprobación del generador de referencia sobre geometrías de control
-
-En este apartado se presentarán las mediciones numéricas obtenidas al ejecutar el generador de referencia por *compute shaders* sobre las geometrías canónicas de control (esfera y cubo poligonales). Se incluirán tablas comparativas de error que contrasten la distancia euclídea generada numéricamente frente a las soluciones analíticas exactas en mallas con diferente densidad poligonal, validando que el método base proporciona una referencia fidedigna ($\text{RMSE} < 10^{-4}$) antes de utilizarlo para medir el error de JFA.
-
-## 5.2. Comparativa de tiempos de generación y consumo de VRAM
-
-Se recogerán y discutirán las mediciones cuantitativas de rendimiento en GPU extraídas mediante consultas `GL_TIME_ELAPSED` para el método de referencia frente al método de propagación JFA 3D. Se tabularán los tiempos de cómputo (en milisegundos) y la memoria de vídeo ocupada (en megabytes) bajo las siguientes configuraciones experimentales:
-
-- **Resoluciones volumétricas:** $64^3$, $128^3$ y $256^3$ vóxeles.
-- **Formatos de textura:** `GL_R32F` (precisión simple) y `GL_R16F` (precisión media).
-- **Escenas de evaluación:** Cornell Box poligonal (32 triángulos) y Crytek Sponza ($262.000$ triángulos).
-
-Los datos se representarán mediante gráficos de barras comparativos de tiempo y curvas de escalabilidad frente al número de triángulos para demostrar empíricamente la independencia del tiempo de propagación JFA respecto a la densidad poligonal.
-
-## 5.3. Análisis del error numérico de distancia (MAE y RMSE)
-
-Se tabularán los errores volumétricos MAE, RMSE y $E_{\max}$ calculados vóxel a vóxel entre el volumen aproximado por JFA y la referencia exacta. Asimismo, se incorporarán mapas de calor en falso color obtenidos a través del visor de cortes ortogonales (*slice viewer*), ilustrando las regiones espaciales donde se concentran las mayores desviaciones de Voronoi inherentes a las pasadas discretas de salto. Se evaluará el impacto de las variantes $\text{JFA}+1$ y $1+\text{JFA}$ en la reducción de dichas discrepancias.
-
-## 5.4. Impacto visual en iluminación global e inspección por cortes
-
-Se expondrán capturas comparativas del trazador de caminos aplicando iluminación indirecta difusa de un rebote y sombras suaves cónicas sobre ambos volúmenes. Se analizará visualmente si los errores numéricos de JFA introducen fugas de luz (*light leaking*), artefactos de auto-sombreado o desprendimiento de sombras en las proximidades de las superficies de contacto, determinando la viabilidad práctica del método acelerado en aplicaciones gráficas en tiempo real.
+*(Este capítulo se desarrollará en la PEC 3 y PEC 4)*
 
 ---
 
 # 6. CONCLUSIONES Y TRABAJO FUTURO
 
-## 6.1. Estado de avance y cumplimiento de hitos en la PEC 2
-
-En el marco de la presente entrega correspondiente a la **PEC 2 (08/11/2026)**, se constata un avance riguroso y conforme al cronograma planificado del proyecto:
-
-- **Consecución del Hito OE1 (Adaptación del visor e infraestructura de pruebas):** Se ha culminado con éxito la integración del prototipo híbrido en C++20 con OpenGL 4.6, SDL3 y Dear ImGui. La canalización incorpora filtrado espacio-temporal SVGF, muestreo por ruido azul STBN y modos diagnósticos avanzados, garantizando un banco de pruebas determinista (>120 FPS, 0 píxeles espurios) validado experimentalmente.
-- **Consecución del Hito OE2 preliminar (Muestreo e integración volumétrica 3D):** Se ha implementado la clase `Texture3D`, el muestreo trilineal continuo en `sdf_raymarching.frag`, el cálculo de normales por diferencias centrales (`get3DTextureNormal`), el sesgo adaptativo superficial (`getSurfaceBias`) y el módulo preliminar de horneado analítico en GPU mediante *compute shader* (`generate_3d_sdf.comp`).
-- **Consecución del Hito OE5 (Herramientas de inspección diagnóstica):** Se han desarrollado los modos de inspección en tiempo real de componentes de iluminación y se ha especificado el visor de cortes ortogonales bidimensionales (*slice viewer*).
-- **Diseño arquitectónico de los generadores a partir de mallas (Hitos OE3 y OE4):** Se han formalizado matemáticamente los procedimientos de cálculo de distancia mínima punto-triángulo, empaquetado de geometrías en SSBOs `std430`, algoritmos de determinación de signo (pseudo-normales, paridad y *winding numbers*) y la propagación volumétrica mediante JFA 3D en esquema *ping-pong*.
-
-## 6.2. Plan de trabajo para la PEC 3
-
-La siguiente etapa de trabajo se centrará en la implementación de los módulos volumétricos a partir de geometría poligonal y la obtención de los primeros resultados comparativos:
-
-1. **Implementación de Compute Shaders para el método base a partir de mallas (OE3):** Codificación y compilación de `sdf_reference.comp`, sustituyendo el horneado analítico de prueba por la lectura de mallas desde `SSBO`, y comprobación sobre geometrías de control.
-2. **Implementación del cauce acelerado JFA 3D (OE4):** Desarrollo de la voxelización de superficie (`jfa_seed.comp`) y de los shaders de propagación por saltos `jfa_step.comp` con sincronización de imágenes en memoria de GPU.
-3. **Conexión de los generadores de mallas con el trazador volumétrico (Consolidación OE2):** Reemplazo del horneado procedimental por los campos volumétricos calculados desde mallas poligonales en el muestreador del visor interactivo.
-4. **Primera batería experimental:** Recogida de datos intermedios de tiempo, memoria y error de distancias para documentar el Capítulo 4 definitivo y los primeros resultados del Capítulo 5.
-
-## 6.3. Líneas de futuro para la PEC 4 y extensiones
-
-Para la fase de cierre (PEC 4) y trabajos posteriores al máster, se contemplan las siguientes líneas de extensión técnica:
-
-- **Estructuras volumétricas jerárquicas y dispersas:** Estudio de estructuras tipo Sparse Voxel Octrees (SVO) o NanoVDB para mitigar el consumo cúbico de memoria $\mathcal{O}(V^3)$ en resoluciones superiores a $512^3$.
-- **Cascadas de radiancia (*Radiance Cascades*):** Evaluación de alternativas de integración de radiancia en múltiples escalas espaciales para iluminación difusa multinivel.
-- **Soporte dinámico para mallas deformables:** Exploración de técnicas de actualización en tiempo real del campo SDF para mallas animadas mediante esqueletos jerárquicos.
+*(Este capítulo se desarrollará en la PEC 4)*
 
 ---
 
@@ -1002,42 +677,12 @@ Para la fase de cierre (PEC 4) y trabajos posteriores al máster, se contemplan 
 
 [13] C. Ericson, *Real-Time Collision Detection*, Morgan Kaufmann Publishers, San Francisco, CA, Estados Unidos, 2004.
 
+[14] M. Macklin, K. Erleben, M. Müller, N. Chentanez, S. Jeschke y Z. Corse, «Local optimization for robust signed distance field collision», *Proceedings of the ACM on Computer Graphics and Interactive Techniques*, vol. 3, n.º 1, artículo 8, pp. 1–17, 2020. doi: 10.1145/3384538.
+
+[15] H. Oleynikova, Z. Taylor, M. Fehr, R. Siegwart y J. Nieto, «Voxblox: Incremental 3D Euclidean Signed Distance Fields for on-board MAV planning», en *2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*, Vancouver, BC, Canadá, 2017, pp. 1366–1373. doi: 10.1109/IROS.2017.8202315.
+
 ---
 
 # 9. ANEXOS
 
-## Anexo A. Estructura de Shaders y Módulos de GPU
-
-La canalización gráfica y los procesos de computación en GPU se distribuyen en módulos GLSL desacoplados bajo el directorio `shaders/`:
-
-- `shaders/common/screen_plane.vert`: Transformación del cuadrilátero a pantalla completa para pases de postprocesamiento y diferido.
-- `shaders/common/hg_sdf.glsl`: Biblioteca de funciones matemáticas y operaciones booleanas para primitivas SDF analíticas.
-- `shaders/3d/geometry.vert` y `shaders/3d/gbuffer.frag`: Pase de rasterización y generación del G-Buffer geométrico primario para mallas poligonales.
-- `shaders/3d/sdf_raymarching.frag`: Trazador de caminos híbrido con soporte para muestreo de texturas volumétricas 3D, demodulación de albedo y arbitraje de profundidad.
-- `shaders/denoise/svgf_temporal.frag`: Reproyección temporal con detección de desoclusiones, acumulación de color y seguimiento de momentos de luminancia.
-- `shaders/denoise/svgf_atrous.frag`: Filtrado espacial multiescala À-Trous con funciones de parada por normal, distancia planar y desviación estándar de varianza.
-- `shaders/postprocess/linear_to_srgb.frag`: Re-modulación de reflectancia, ajuste de contraste y conversión gamma a sRGB.
-- `shaders/postprocess/blit.frag`: Pase de reescalado a pantalla completa (*upscaling*) con filtrado puntual o bilineal.
-- `shaders/postprocess/fxaa.frag`: Antialiasing rápido aproximado en espacio de pantalla (modos estándar y derivativo).
-- `shaders/compute/generate_3d_sdf.comp`: *Compute shader* de prueba de concepto para horneado en GPU de volúmenes analíticos (esfera, primitivas y habitación CSG) en texturas 3D (Hito OE2).
-- `shaders/compute/sdf_reference.comp`: *(Previsto para PEC 3)* *Compute shader* de cálculo exacto punto-triángulo sobre cuadrículas volumétricas a partir de mallas en SSBO (Hito OE3).
-- `shaders/compute/jfa_seed.comp`: *(Previsto para PEC 3)* *Compute shader* de inicialización de semillas a partir de la geometría voxelizada superficialmente (Hito OE4).
-- `shaders/compute/jfa_step.comp`: *(Previsto para PEC 3)* *Compute shader* de propagación espacial de distancias mediante saltos *Jump Flooding* 3D con esquema *ping-pong* (Hito OE4).
-
-## Anexo B. Instrucciones de Compilación y Ejecución
-
-Para compilar y ejecutar el proyecto en un entorno GNU/Linux compatible:
-
-```bash
-# Configuración del proyecto mediante CMake y generador Ninja
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-
-# Compilación del ejecutable principal
-cmake --build build
-
-# Ejecución interactiva del visor y banco de pruebas
-./build/tfm_pathtracer
-
-# Ejecución de la suite automatizada determinista de pruebas de estabilidad
-./build/tfm_pathtracer --test
-```
+*(No se incluyen anexos en esta entrega)*
