@@ -29,18 +29,18 @@
 \RequirePackage{fontspec}
 \RequirePackage[spanish,es-tabla]{babel}
 
-\IfFontExistsTF{Liberation Sans}{
-  \setmainfont{Liberation Sans}[
-    BoldFont={Liberation Sans Bold},
-    ItalicFont={Liberation Sans Italic},
-    BoldItalicFont={Liberation Sans Bold Italic}
+\IfFontExistsTF{Arial}{
+  \setmainfont{Arial}[
+    BoldFont={Arial Bold},
+    ItalicFont={Arial Italic},
+    BoldItalicFont={Arial Bold Italic}
   ]
 }{
-  \IfFontExistsTF{Arial}{
-    \setmainfont{Arial}[
-      BoldFont={Arial Bold},
-      ItalicFont={Arial Italic},
-      BoldItalicFont={Arial Bold Italic}
+  \IfFontExistsTF{Liberation Sans}{
+    \setmainfont{Liberation Sans}[
+      BoldFont={Liberation Sans Bold},
+      ItalicFont={Liberation Sans Italic},
+      BoldItalicFont={Liberation Sans Bold Italic}
     ]
   }{
     \setmainfont{DejaVu Sans}
@@ -196,7 +196,7 @@
 % Page Styles
 \fancypagestyle{uocdefault}{
   \fancyhf{}
-  \fancyhead[L]{\hspace*{-8mm}\includegraphics[width=170.1mm]{\templateassets/uoc_header.png}}
+  \fancyhead[L]{\makebox[\textwidth][l]{\hspace*{-8mm}\includegraphics[width=170.1mm]{\templateassets/uoc_header.png}}}
   \renewcommand{\headrulewidth}{0pt}
   \fancyfoot[C]{\fontsize{10}{12}\selectfont\thepage}
   \renewcommand{\footrulewidth}{0pt}
@@ -212,12 +212,12 @@
 
 \fancypagestyle{licensepage}{
   \fancyhf{}
-  \fancyhead[L]{\hspace*{-8mm}\includegraphics[width=170.1mm]{\templateassets/uoc_header.png}}
+  \fancyhead[L]{\makebox[\textwidth][l]{\hspace*{-8mm}\includegraphics[width=170.1mm]{\templateassets/uoc_header.png}}}
   \renewcommand{\headrulewidth}{0pt}
   \fancyfoot[L]{%
-    \fontsize{9}{11}\selectfont%
-    \textcolor{uoccyan}{\rule{\textwidth}{1.5pt}}\\%
-    \@tfmprogram\hfill\@tfmdate%
+    \fontsize{10.5}{13}\selectfont\textcolor{uocblue}{%
+    \textcolor{uoccyan}{\rule{\textwidth}{3pt}}\\%
+    \@tfmprogram\hfill\@tfmdate}%
   }
   \renewcommand{\footrulewidth}{0pt}
 }

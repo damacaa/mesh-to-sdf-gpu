@@ -17,9 +17,16 @@ if command -v xelatex >/dev/null 2>&1; then
     (cd "${PROJECT_ROOT}" && TEXINPUTS=".:docs:" xelatex -interaction=nonstopmode -output-directory="${TARGET_DIR}" "${TARGET}")
 else
     echo "Using containerized xelatex (docker.io/pandoc/latex:latest via podman)..."
+    FONT_MOUNT=""
+    if [ -d "/mnt/c/Windows/Fonts" ]; then
+        FONT_MOUNT="-v /mnt/c/Windows/Fonts:/usr/share/fonts:ro"
+    elif [ -d "/usr/share/fonts" ]; then
+        FONT_MOUNT="-v /usr/share/fonts:/usr/share/fonts:ro"
+    fi
+
     podman run --rm \
         -v "${PROJECT_ROOT}:/workspace:Z" \
-        -v /usr/share/fonts:/usr/share/fonts:ro \
+        ${FONT_MOUNT} \
         -w /workspace \
         --entrypoint /bin/sh \
         docker.io/pandoc/latex:latest \
