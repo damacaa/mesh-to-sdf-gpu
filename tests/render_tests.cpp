@@ -287,6 +287,55 @@ void testPipeline()
     capture(pipeline, camera, scene, 3.0);
     std::cout << "PASS: pipeline reset with 0/1/4 iterations, STBN animation, mode switch, motion, and resize\n";
 }
+
+void testStaticAccumulationConvergence()
+{
+    renderer::PathTracerPipeline::Config config;
+    config.renderWidth = width;
+    config.renderHeight = height;
+    config.enableDenoising = false;
+    config.maxAccumulationFrames = 100;
+    config.enableFxaa = false;
+
+    auto scenes = renderer::getPredefinedScenes();
+    auto scene = scenes.front();
+    renderer::Camera camera(scene.cameraPosition);
+    camera.yaw = scene.cameraYaw;
+    camera.pitch = scene.cameraPitch;
+    camera.updateVectors();
+    camera.updateMatrix(width, height);
+
+    renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
+    pipeline.setScene(scene, 0);
+
+    for (bool blue : {false, true})
+    {
+        pipeline.getConfig().enableBlueNoise = blue;
+        pipeline.resetAccumulation(true);
+
+        auto frame0 = capture(pipeline, camera, scene, 0.0);
+        for (int f = 1; f < 64; ++f)
+        {
+            capture(pipeline, camera, scene, 0.0);
+        }
+        auto frame63 = capture(pipeline, camera, scene, 0.0);
+        require(frame63 != frame0, "Static accumulation did not advance across the first 64 frames.");
+
+        auto frame64 = capture(pipeline, camera, scene, 0.0);
+        require(frame64 != frame63, "Static accumulation froze at frame 64.");
+        for (int f = 65; f < 80; ++f)
+        {
+            capture(pipeline, camera, scene, 0.0);
+        }
+        auto frame80 = capture(pipeline, camera, scene, 0.0);
+        require(frame80 != frame64, "Static accumulation froze past frame 64.");
+
+        pipeline.resetAccumulation(true);
+        auto resetFrame0 = capture(pipeline, camera, scene, 0.0);
+        require(resetFrame0 == frame0, "Static accumulation reset is not repeatable.");
+    }
+    std::cout << "PASS: static accumulation convergence and continuous sample generation past 64 frames\n";
+}
 }
 
 int main()
@@ -310,6 +359,7 @@ int main()
         testTemporal();
         testVarianceFilter();
         testPipeline();
+        testStaticAccumulationConvergence();
         checkGl();
     }
     catch (const std::exception& error)

@@ -136,22 +136,19 @@ uint pcg(inout uint state)
 	return (word >> 22u) ^ word;
 }
 
-float randomFloat(inout float seed)
+float randomFloat(inout uint state)
 {
-	uint state = floatBitsToUint(seed);
-	float result = float(pcg(state)) * (1.0 / 4294967296.0);
-	seed = uintBitsToFloat(state);
-	return result;
+	return float(pcg(state)) * (1.0 / 4294967296.0);
 }
 
-vec2 hash2(inout float seed)
+vec2 hash2(inout uint state)
 {
-	return vec2(randomFloat(seed), randomFloat(seed));
+	return vec2(randomFloat(state), randomFloat(state));
 }
 
-vec3 hash3(inout float seed)
+vec3 hash3(inout uint state)
 {
-	return vec3(randomFloat(seed), randomFloat(seed), randomFloat(seed));
+	return vec3(randomFloat(state), randomFloat(state), randomFloat(state));
 }
 
 // Each bounce reserves domains for the lobe, diffuse direction, specular direction, material, and eight lights.
@@ -163,6 +160,11 @@ ivec3 noiseCoord(int domain)
 	// Keep each spatial offset fixed over time to preserve the STBN temporal sequence.
 	ivec2 offset = ivec2(floor(fract(float(domain) * R2_SEQUENCE) * 128.0));
 	uint stream = uint(u_samplingSeed) * 747796405u;
+	if (u_enableDenoising == 0 && u_frameCounter >= 64)
+	{
+		uint cycle = uint(u_frameCounter) / 64u;
+		stream ^= cycle * 277803737u;
+	}
 	offset += ivec2(int(stream & 127u), int((stream >> 7u) & 127u));
 	ivec2 pixel = (ivec2(gl_FragCoord.xy) + offset) & ivec2(127);
 	return ivec3(pixel, u_noiseFrameIndex & 63);
@@ -174,22 +176,37 @@ vec4 decodeNoise(vec4 value)
 	return (value * 255.0 + 0.5) / 256.0;
 }
 
-float sampleNoise1(int domain, inout float seed)
+float sampleNoise1(int domain, inout uint state)
 {
-	if (u_enableBlueNoise == 0) return randomFloat(seed);
-	return decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).w;
+	if (u_enableBlueNoise == 0) return randomFloat(state);
+	float val = decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).w;
+	if (u_enableDenoising == 0 && u_frameCounter >= 64)
+	{
+		val = fract(val + randomFloat(state));
+	}
+	return val;
 }
 
-vec2 sampleNoise2(int domain, inout float seed)
+vec2 sampleNoise2(int domain, inout uint state)
 {
-	if (u_enableBlueNoise == 0) return hash2(seed);
-	return decodeNoise(texelFetch(t_stbn1, noiseCoord(domain), 0)).xy;
+	if (u_enableBlueNoise == 0) return hash2(state);
+	vec2 val = decodeNoise(texelFetch(t_stbn1, noiseCoord(domain), 0)).xy;
+	if (u_enableDenoising == 0 && u_frameCounter >= 64)
+	{
+		val = fract(val + hash2(state));
+	}
+	return val;
 }
 
-vec3 sampleNoise3(int domain, inout float seed)
+vec3 sampleNoise3(int domain, inout uint state)
 {
-	if (u_enableBlueNoise == 0) return hash3(seed);
-	return decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).xyz;
+	if (u_enableBlueNoise == 0) return hash3(state);
+	vec3 val = decodeNoise(texelFetch(t_stbn0, noiseCoord(domain), 0)).xyz;
+	if (u_enableDenoising == 0 && u_frameCounter >= 64)
+	{
+		val = fract(val + hash3(state));
+	}
+	return val;
 }
 
 vec3 cosineSampleHemisphere(vec3 N, vec2 xi)
@@ -409,7 +426,7 @@ RayHit rayMarch(vec3 ro, vec3 rd)
 		hit = sceneSdf(p).x;
 
 		// Distance-adaptive precision: scale threshold with distance
-		float precis = max(RAYMARCH_EPSILON, traveled * 0.0005);
+		float precis = max(RAYMARCH_EPSILON, traveled * 0.001);
 
 		if (abs(hit) < precis)
 		{
@@ -515,7 +532,7 @@ vec3 getFogColor(vec3 dir)
 	return getSkyColor(horizonDir);
 }
 
-vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout float seed)
+vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout uint state)
 {
 	int currentMatId = clamp(materialId, 0, 15);
 
@@ -549,7 +566,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		}
 
 		int noiseDomain = bounce * NOISE_DOMAINS_PER_BOUNCE;
-		float randVal = sampleNoise1(noiseDomain, seed);
+		float randVal = sampleNoise1(noiseDomain, state);
 		bool isSpecular = randVal < fresnel;
 
 		// Direct Lighting from all active lights
@@ -562,7 +579,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			float lightDist;
 			float attenuation = 1.0;
 
-			vec3 lightJitter = sampleNoise3(noiseDomain + 4 + i, seed);
+			vec3 lightJitter = sampleNoise3(noiseDomain + 4 + i, state);
 
 			if (light.type == 0) // Directional
 			{
@@ -624,8 +641,8 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		}
 
 		// Indirect bounce
-		vec2 diffuseXi = sampleNoise2(noiseDomain + 1, seed);
-		vec3 specJitter = sampleNoise3(noiseDomain + 2, seed);
+		vec2 diffuseXi = sampleNoise2(noiseDomain + 1, state);
+		vec3 specJitter = sampleNoise3(noiseDomain + 2, state);
 
 		vec3 diffuseDir = cosineSampleHemisphere(N, diffuseXi);
 		vec3 reflectDir = reflect(currentRd, N);
@@ -681,7 +698,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			float bounceBlend = preBounceScene.z;
 			float bounceJitterMask = smoothstep(0.0, 0.5, bounceBlend);
 
-			vec3 jitterVec = sampleNoise3((bounce + 1) * NOISE_DOMAINS_PER_BOUNCE + 3, seed);
+			vec3 jitterVec = sampleNoise3((bounce + 1) * NOISE_DOMAINS_PER_BOUNCE + 3, state);
 			vec3 bounceMaterialPos = p + (jitterVec - 0.5) * 0.04 * max(d, 1.0) * bounceJitterMask;
 			vec3 bounceScene = sceneSdf(bounceMaterialPos);
 			int bounceMatId = clamp(int(bounceScene.y), 0, 15);
@@ -710,7 +727,7 @@ struct HitData
 	bool hit;
 };
 
-HitData render(in vec2 uv)
+HitData render(in vec2 uv, inout uint state)
 {
 	vec3 ro = -u_camMatrix[3].xyz;
 	ro = vec3(dot(u_camMatrix[0].xyz, ro), dot(u_camMatrix[1].xyz, ro), dot(u_camMatrix[2].xyz, ro));
@@ -744,12 +761,6 @@ HitData render(in vec2 uv)
 	// Distant atmospheric horizon fog color
 	vec3 fogColor = getFogColor(rd);
 
-	uint pixelIndex = uint(pixelCoord.x) + uint(pixelCoord.y) * uint(u_resolution.x);
-	uint temporalSeed = uint(u_frameCounter) ^ floatBitsToUint(u_time) ^ (uint(u_samplingSeed) * 277803737u);
-	uint state = pixelIndex ^ (temporalSeed * 747796405u + 2891336453u);
-	pcg(state);
-	float seed = uintBitsToFloat(state);
-
 	HitData hit;
 
 	if (meshInFront)
@@ -762,7 +773,7 @@ HitData render(in vec2 uv)
 		int materialId = texelFetch(t_gbufferMaterial, pixelCoord, 0).r;
 		meshAlbedo *= getMaterial(meshWorldPos, materialId);
 
-		vec3 col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, seed);
+		vec3 col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, state);
 
 		// Fog at mesh depth (Euclidean distance along ray)
 		float meshEuclideanDist = meshDepthLinear / absCosAngle;
@@ -785,7 +796,7 @@ HitData render(in vec2 uv)
 		vec3 preScene = sceneSdf(p);
 		float blendFactor = preScene.z;
 		float jitterMask = smoothstep(0.0, 0.5, blendFactor);
-		vec3 matJitter = sampleNoise3(3, seed);
+		vec3 matJitter = sampleNoise3(3, state);
 		vec3 materialSamplePos = p + (matJitter - 0.5) * 0.01 * max(object, 5.0) * jitterMask;
 
 		vec3 sceneResult = sceneSdf(materialSamplePos);
@@ -793,7 +804,7 @@ HitData render(in vec2 uv)
 		vec3 baseColor = getMaterial(materialSamplePos, materialId);
 		vec3 norm = getNormal(p);
 
-		vec3 col = pathTrace(p, rd, baseColor, materialId, norm, seed);
+		vec3 col = pathTrace(p, rd, baseColor, materialId, norm, state);
 
 		// Fog at SDF depth (Euclidean distance along ray)
 		float fog = smoothstep(fogStart, fogEnd, object);
@@ -830,28 +841,32 @@ HitData render(in vec2 uv)
 	return hit;
 }
 
-float rand(vec2 co)
-{
-	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
-}
-
 void main()
 {
 	vec2 screenUV = v_texCoord;
 	vec2 uv = (2.0 * v_texCoord) - 1.0;
 	float aspectRatio = u_resolution.x / u_resolution.y;
 
+	ivec2 pixelCoord = ivec2(gl_FragCoord.xy);
+	uvec2 pixelCoordU = uvec2(pixelCoord);
+	uint timeBits = floatBitsToUint(u_time);
+	uint h = (pixelCoordU.x * 374761393u) ^ (pixelCoordU.y * 668265263u) ^ (uint(u_frameCounter) * 3266489917u) ^ (timeBits * 1274126177u) ^ (uint(u_samplingSeed) * 277803737u);
+	h = (h ^ (h >> 13u)) * 1274126177u;
+	h = h ^ (h >> 16u);
+	uint state = h * 747796405u + 2891336453u;
+
 #ifdef ANTIALIASING
 	// Only apply subpixel camera jitter during offline accumulation; keep primary rays centered for SVGF
 	if (u_enableDenoising == 0)
 	{
-		uv += (vec2(rand(uv + u_time), rand(uv + u_time * 1.5)) - 0.5) * 2.0 / u_resolution;
+		vec2 jitter = hash2(state) - 0.5;
+		uv += jitter * 2.0 / u_resolution;
 	}
 #endif
 
 	uv.x *= aspectRatio;
 
-	HitData hit = render(uv);
+	HitData hit = render(uv, state);
 	vec3 col = hit.color;
 
 	// Firefly suppression
@@ -863,13 +878,10 @@ void main()
 
 	if (u_enableDenoising == 0)
 	{
-		// Legacy static accumulation mode
-		col = mix(vec3(0.5), col, u_contrast);
-		col = clamp(col, 0.0, 1.0);
-
+		// Static linear radiance accumulation
 		if (u_frameCounter > 0)
 		{
-			vec4 prevColor = texture(t_previousColor, screenUV);
+			vec4 prevColor = texelFetch(t_previousColor, pixelCoord, 0);
 			float weight = 1.0 / float(u_frameCounter + 1);
 			col = mix(prevColor.xyz, col, weight);
 		}

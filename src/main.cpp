@@ -511,7 +511,7 @@ int main(int argc, char* argv[])
 						}
 						else
 						{
-							if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 500))
+							if (ImGui::SliderInt("Max Accumulation", &pipeline.getConfig().maxAccumulationFrames, 10, 1000))
 							{
 								pipeline.resetAccumulation();
 							}

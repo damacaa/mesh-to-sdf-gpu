@@ -260,6 +260,8 @@ namespace renderer
 		{
 			m_historyValid = false;
 			m_firstFrame = true;
+			m_noiseFrameCounter = m_samplingSeed & 63;
+			m_accumIdx = 0;
 		}
 	}
 

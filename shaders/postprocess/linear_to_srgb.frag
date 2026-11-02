@@ -27,8 +27,9 @@ void main()
 
 	if (u_enableDenoising == 0)
 	{
-		// Legacy accumulation: filteredIllum is already accumulated color
-		col = filteredIllum;
+		// Static accumulation: filteredIllum is accumulated linear radiance
+		col = mix(vec3(0.5), filteredIllum, u_contrast);
+		col = clamp(col, 0.0, 1.0);
 	}
 	else
 	{
