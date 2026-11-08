@@ -58,7 +58,10 @@ The university evaluates the thesis through four deliverables (*PECs*):
 
 ### Document Guidelines
 - University submissions use the official template exported to PDF named `damaca_PEC[X].pdf`.
-- Write all drafts in `docs/` in Markdown format.
+- The LaTeX files in `docs/` are the single source of truth for the academic thesis.
+- The root document is `docs/memoria.tex`.
+- Put modular chapters in `docs/capitulos/` (for example, `01_introduccion.tex`).
+- Compile documents with `bash docs/scripts/compile_latex.sh docs/memoria.tex`.
 - Match the headings of the official university template.
 - Number all figures and add captions (`Figura X: Descripción`). Refer to figures in the text (`Tal como muestra la Figura X`).
 - Number all tables and add captions (`Tabla X: Descripción`).
@@ -79,4 +82,4 @@ The university evaluates the thesis through four deliverables (*PECs*):
 
 3. **Academic Integrity and AI Disclosure**:
    - Declare all third-party resources and AI usage.
-   - Record tool usage, purpose, and prompts in `docs/declaracion_recursos_ia.md`.
+   - Record tool usage, purpose, and prompts in `docs/internal/declaracion_recursos_ia.md`.

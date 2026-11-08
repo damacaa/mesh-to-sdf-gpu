@@ -1,5 +1,8 @@
 import zipfile
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
+DOCX_PATH = Path(__file__).resolve().parent.parent / 'internal' / 'TFx_Plantilla_Memoria_es.docx'
 
 ns = {
     'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
@@ -9,7 +12,7 @@ ns = {
     'wp': 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
 }
 
-with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z:
+with zipfile.ZipFile(DOCX_PATH) as z:
     doc_xml = z.read('word/document.xml')
     root = ET.fromstring(doc_xml)
     tbls = root.findall('.//w:tbl', ns)
@@ -82,7 +85,7 @@ with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z
 print("\n" + "=" * 60)
 print("2. FICHA TABLE ANALYSIS")
 print("=" * 60)
-with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z:
+with zipfile.ZipFile(DOCX_PATH) as z:
     doc_xml = z.read('word/document.xml')
     root = ET.fromstring(doc_xml)
     tbls = root.findall('.//w:tbl', ns)
@@ -110,7 +113,7 @@ with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z
 print("\n" + "=" * 60)
 print("3. BODY HEADINGS AND HIGHLIGHTING ANALYSIS")
 print("=" * 60)
-with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z:
+with zipfile.ZipFile(DOCX_PATH) as z:
     doc_xml = z.read('word/document.xml')
     root = ET.fromstring(doc_xml)
     body = root.find('w:body', ns)
@@ -151,7 +154,7 @@ with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z
 print("\n" + "=" * 60)
 print("4. STYLES XML DETAILED ANALYSIS")
 print("=" * 60)
-with zipfile.ZipFile(r'D:\Projects\tfm\docs\TFx_Plantilla_Memoria_es.docx') as z:
+with zipfile.ZipFile(DOCX_PATH) as z:
     styles_xml = z.read('word/styles.xml')
     root = ET.fromstring(styles_xml)
     for s_id in ['Heading1', 'Heading2', 'Heading3', 'Heading4', 'Normal', 'Caption']:

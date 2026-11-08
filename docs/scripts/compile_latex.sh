@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-TARGET="${1:-docs/plantilla_memoria.tex}"
+TARGET="${1:-docs/memoria.tex}"
 BASENAME="$(basename "${TARGET}" .tex)"
 TARGET_DIR="$(dirname "${TARGET}")"
 

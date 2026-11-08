@@ -1,0 +1,175 @@
+\clearpage
+\section{Estado del arte}
+
+\subsection{Campos de distancia con signo (SDF) y \textit{sphere tracing}}
+
+Un campo de distancia con signo (\textit{Signed Distance Field}, SDF) es una función escalar $f: \mathbb{R}^3 \to \mathbb{R}$ que asigna a cada coordenada espacial la distancia euclídea mínima a la superficie delimitadora más próxima $\partial \mathcal{S}$ de la escena:
+
+\begin{equation}
+  f(p) = \text{sign}(p) \cdot \min_{q \in \partial \mathcal{S}} \|p - q\|
+\end{equation}
+
+El signo positivo identifica los puntos pertenecientes al exterior del volumen, el valor cero define la superficie geométrica $\partial \mathcal{S}$, y el signo negativo determina el interior de cuerpos cerrados y orientables. La propiedad matemática fundamental de un campo de distancia continuo es que satisface la ecuación \textit{eikonal} $\|\nabla f(p)\| = 1$ en casi todo el dominio continuo. Esto garantiza que la magnitud del gradiente espacial coincide con la unidad y que su vector normalizado corresponde con el vector normal unitario a la superficie:
+
+\begin{equation}
+  n = \nabla f(p) = \left( \frac{\partial f}{\partial x}, \frac{\partial f}{\partial y}, \frac{\partial f}{\partial z} \right)
+\end{equation}
+
+En simulación física y robótica, esta relación proporciona de forma directa la profundidad de interpenetración ($f(p) < 0$), el margen de seguridad frente a obstáculos ($f(p) > 0$) y la dirección normal de contacto o repulsión ($\nabla f(p)$) \cite{macklin2020, oleynikova2017}. En síntesis de imagen, esta misma propiedad fundamenta el algoritmo de \textit{sphere tracing} introducido por Hart \cite{hart1996}. A diferencia del trazado por pasos uniformes (\textit{ray marching} regular), el \textit{sphere tracing} garantiza que dentro de una esfera de radio $f(p)$ centrada en la posición actual del rayo no existe intersección geométrica alguna con la escena. Por tanto, el avance del rayo puede adaptarse dinámicamente a la distancia devuelta por el campo:
+
+\begin{equation}
+  p_{k+1} = p_k + f(p_k) \cdot \omega
+\end{equation}
+
+Esta aceleración reduce drásticamente el número de evaluaciones necesarias para encontrar una intersección, facilitando tanto el cálculo de sombras suaves cónicas mediante la monitorización del cociente $\min(f(p)/t)$ como el cálculo de rebotes indirectos difusos y oclusión ambiental. En la industria del videojuego, motores de última generación como Unreal Engine 5 con su subsistema Lumen \cite{wright2022} emplean campos de distancia discretizados para realizar consultas de oclusión e iluminación indirecta independientes de la aceleración por hardware dedicada.
+
+\subsection{Generación de SDF volumétricos en GPU a partir de mallas poligonales}
+
+A diferencia de las primitivas analíticas (esferas, cilindros, cajas) cuyas funciones SDF se evalúan mediante expresiones algebraicas cerradas de coste constante $\mathcal{O}(1)$, las mallas poligonales arbitrarias compuestas por $N_{\text{tris}}$ triángulos requieren procedimientos de discretización espacial sobre cuadrículas volumétricas tridimensionales de resolución $V_x \times V_y \times V_z = V^3$ vóxeles.
+
+\subsubsection{Formulación matemática de la distancia mínima punto-triángulo en \texorpdfstring{$\mathbb{R}^3$}{R3}}
+
+Dado un punto de consulta $p \in \mathbb{R}^3$ (correspondiente al centro espacial de un vóxel) y un triángulo tridimensional $T$ definido por sus tres vértices ordenados $\{v_0, v_1, v_2\}$, los vectores directores de sus aristas se expresan como $e_0 = v_1 - v_0$ y $e_1 = v_2 - v_0$. El vector normal no normalizado al plano que contiene al triángulo viene dado por el producto vectorial $n_T = e_0 \times e_1$.
+
+El cálculo de la distancia euclídea mínima entre $p$ y el triángulo $T$, denotada como $d(p, T) = \min_{q \in T} \|p - q\|$, no puede resolverse simplemente calculando la distancia ortogonal al plano infinito que lo contiene, ya que la proyección ortogonal del punto puede quedar fuera de los límites geométricos del triángulo \cite{ericson2004}. Siguiendo la formulación geométrica de regiones de Voronoi planares, el triángulo delimita siete regiones disjuntas en el espacio: la cara interior, tres aristas y tres vértices.
+
+La parametrización de cualquier punto sobre el plano del triángulo se define en coordenadas baricéntricas o afines como:
+
+\begin{equation}
+  q(u, v) = v_0 + u \, e_0 + v \, e_1, \quad \text{con } u \ge 0, \; v \ge 0, \; u + v \le 1
+\end{equation}
+
+Definiendo el vector de desplazamiento $w = v_0 - p$, la distancia al cuadrado entre $p$ y cualquier punto $q(u, v)$ constituye una función cuadrática:
+
+\begin{equation}
+  \phi(u, v) = \|q(u, v) - p\|^2 = a u^2 + 2 b u v + c v^2 + 2 d u + 2 e v + f
+\end{equation}
+
+donde los coeficientes escalares resultan de los productos escalares fundamentales: $a = e_0 \cdot e_0$, $b = e_0 \cdot e_1$, $c = e_1 \cdot e_1$, $d = e_0 \cdot w$, $e = e_1 \cdot w$ y $f = w \cdot w$. El mínimo global no restringido de esta parábola sobre el plano infinito ocurre en el punto crítico donde el gradiente se anula:
+
+\begin{equation}
+  u^* = \frac{b e - c d}{a c - b^2}, \quad v^* = \frac{b d - a e}{a c - b^2}
+\end{equation}
+
+A partir de este punto crítico, se discriminan los casos geométricos:
+
+\begin{enumerate}
+  \item \textbf{Región de cara:} Si $u^* \ge 0$, $v^* \ge 0$ y $u^* + v^* \le 1$, la proyección ortogonal de $p$ recae estrictamente dentro del triángulo. El punto más próximo es $q = q(u^*, v^*)$ y la distancia mínima coincide con la distancia perpendicular al plano: $d(p, T) = |(p - v_0) \cdot (n_T / \|n_T\|)|$.
+  \item \textbf{Regiones de aristas (3 regiones):} Si la proyección cae fuera de una de las aristas del triángulo pero dentro de los planos delimitadores de sus vértices extremos, el punto más cercano se ubica sobre el segmento de línea que define dicha arista. La solución se reduce a la proyección unidimensional acotada con parámetro $t \in [0, 1]$ sobre el segmento correspondiente.
+  \item \textbf{Regiones de vértices (3 regiones):} Si la proyección cae en el cono exterior de Voronoi adyacente a uno de los vértices, el punto más cercano es dicho vértice $v_i$, cumpliéndose $d(p, T) = \|p - v_i\|$.
+\end{enumerate}
+
+\subsubsection{Paralelización masiva en GPU mediante Compute Shaders}
+
+Para generar un volumen de distancias sobre una cuadrícula regular de $V^3$ vóxeles inscrita en una \textit{bounding box} alineada con los ejes (\textit{Axis-Aligned Bounding Box}, AABB), el método directo o de fuerza bruta asigna un hilo de ejecución independiente a cada vóxel $(i, j, k)$. La posición tridimensional del centro del vóxel en espacio de mundo se calcula como:
+
+\begin{equation}
+  p_{ijk} = \text{AABB}_{\min} + \left( \frac{(i, j, k) + 0.5}{V} \right) \odot (\text{AABB}_{\max} - \text{AABB}_{\min})
+\end{equation}
+
+En una implementación directa, cada hilo recorre secuencialmente los $N_{\text{tris}}$ triángulos de la malla poligonal, almacenados en un \textit{buffer} de almacenamiento en GPU (\textit{Shader Storage Buffer Object}, SSBO), evaluando la distancia mínima y conservando el valor escalar más reducido:
+
+\begin{equation}
+  d(p_{ijk}) = \min_{m \in \{1, \dots, N_{\text{tris}}\}} d(p_{ijk}, T_m)
+\end{equation}
+
+La complejidad computacional global de este enfoque es de $\mathcal{O}(V^3 \cdot N_{\text{tris}})$. Para resoluciones típicas como $128^3$ ($2.097.152$ vóxeles) y mallas con $250.000$ triángulos, el algoritmo exige ejecutar más de $5 \times 10^{11}$ pruebas punto-triángulo. Aunque esta carga computacional limita la interactividad en mallas complejas, su naturaleza masivamente paralela y exenta de divergencias de ramas complejas lo convierte en el método de referencia determinista óptimo para verificar la corrección geométrica de otros algoritmos aproximados.
+
+\subsubsection{Determinación del signo: mallas cerradas frente a mallas arbitrarias}
+
+Asignar un signo escalar a la distancia euclídea ($+d$ para el exterior y $-d$ para el interior) requiere determinar la topología del objeto. En computación gráfica se distinguen fundamentalmente dos escenarios:
+
+\begin{enumerate}
+  \item \textbf{Mallas \textit{manifold} cerradas (\textit{watertight / 2-manifold}):} Objetos perfectamente estancos, orientables, sin auto-intersecciones ni aristas compartidas por más o menos de dos caras poligonales. En estas geometrías existe una frontera inequívoca entre el volumen interno y el espacio exterior.
+  \item \textbf{Mallas abiertas o \textit{non-manifold} (\textit{open boundaries / polygon soup}):} Modelos comunes en entornos interactivos que contienen planos de grosor nulo, huecos geométricos, caras interiores parásitas o discontinuidades en las normales de los vértices.
+\end{enumerate}
+
+Para discernir la pertenencia interior/exterior sobre la cuadrícula volumétrica se estudian tres estrategias principales en la literatura:
+
+\begin{itemize}
+  \item \textbf{Pseudo-normales ponderadas por ángulo (\textit{Angle-Weighted Pseudonormals}):} Introducido por Bærentzen y Aanæs \cite{baerentzen2005}, este método asocia a cada primitiva geométrica (caras, aristas y vértices) un vector normal regularizado. Para una cara, se emplea su normal geométrica $n_F$. Para un vértice $v$, la pseudo-normal $n_v$ se define como la suma ponderada de las normales de las caras adyacentes multiplicadas por el ángulo interior de apertura $\theta_k$ de cada cara en dicho vértice:
+  \begin{equation}
+    n_v = \sum_{k \in \mathcal{F}(v)} \theta_k \, n_{F_k}
+  \end{equation}
+  De igual forma, para una arista compartida por dos caras se suman sus normales ponderadas. Cuando un vóxel determina cuál es la característica más cercana (cara, arista o vértice), el signo se calcula mediante el producto escalar entre el vector de desplazamiento al punto más cercano $q$ y la pseudo-normal asociada $n_q$:
+  \begin{equation}
+    \text{sign}(p) = \text{sign}\left( (p - q) \cdot n_q \right)
+  \end{equation}
+  Este método es sumamente eficiente y de cómputo puramente local, pero resulta vulnerable si la malla no es estrictamente estanca o presenta caras invertidas, provocando inversiones de signo espurias que se propagan a través de las aperturas.
+  \item \textbf{Conteo de intersecciones por trazado de rayos (\textit{Ray Casting Parity Count}):} Basado en el teorema de la curva de Jordan generalizado a $\mathbb{R}^3$, se traza un rayo en una dirección arbitraria (por ejemplo, a lo largo del eje $+X$) desde el vóxel $p$ hacia el infinito. Si el número de intersecciones con los triángulos de la escena es impar, el punto es interior; si es par, es exterior. Su mayor inconveniente en GPU radica en el elevado coste de trazar $V^3$ rayos y en la inestabilidad numérica producida cuando un rayo incide tangencialmente sobre una arista o vértice compartido, además de fallar categóricamente en mallas abiertas con huecos.
+  \item \textbf{\textit{Generalized Winding Numbers}:} Propuesto por Jacobson et al. \cite{jacobson2013}, generaliza el concepto topológico de \textit{winding number} a mallas poligonales arbitrarias con agujeros, auto-intersecciones y ruido geométrico. El \textit{winding number} $w(p)$ en un punto $p$ se define como la integral del ángulo sólido subtendido por la superficie orientada:
+  \begin{equation}
+    w(p) = \frac{1}{4\pi} \sum_{m=1}^{N_{\text{tris}}} \Omega_m(p)
+  \end{equation}
+  donde $\Omega_m(p)$ representa el ángulo sólido con signo subtendido por el triángulo $m$ visto desde $p$. Para mallas estancas, $w(p) = 1$ en el interior y $w(p) = 0$ en el exterior. En mallas imperfectas con bordes abiertos o geometrías desconectadas, $w(p)$ adopta valores intermedios que decaen suavemente, permitiendo clasificar el interior mediante un umbral de decisión robusto (típicamente $w(p) \ge 0.5$). Su evaluación directa requiere una complejidad $\mathcal{O}(V^3 \cdot N_{\text{tris}})$, requiriendo aproximaciones jerárquicas tipo Barnes-Hut para su aceleración.
+\end{itemize}
+
+\subsection{Propagación espacial mediante Jump Flooding Algorithm (JFA) en 3D}
+
+Para superar el cuello de botella computacional $\mathcal{O}(V^3 \cdot N_{\text{tris}})$ inherente a los métodos de cálculo directo, se recurre a técnicas de propagación espacial en cuadrículas regulares. El algoritmo \textit{Jump Flooding Algorithm} (JFA), formulado originalmente por Rong y Tan \cite{rong2006}, permite calcular transformadas de distancia euclídea discretas (\textit{Discrete Euclidean Distance Transform}, EDT) y aproximaciones de diagramas de Voronoi en arquitecturas masivamente paralelas con una complejidad temporal de $\mathcal{O}(V^3 \log_2 V)$, totalmente independiente del número de triángulos originales de la malla.
+
+\subsubsection{Estructura y fases del \textit{pipeline} JFA en tres dimensiones}
+
+La adaptación de JFA a un volumen tridimensional se estructura en tres etapas secuenciales de procesamiento en GPU:
+
+\begin{enumerate}
+  \item \textbf{Extracción e inicialización de semillas (\textit{Seed Initialization}):} Se analiza la superficie de la malla poligonal sobre la cuadrícula tridimensional mediante rasterización volumétrica conservativa o mediante voxelización superficial directa en \textit{compute shaders}. Para cada vóxel que contenga o intercepte un elemento de superficie, se registra su posición espacial tridimensional en una textura volumétrica de semillas (\texttt{GL\_RGBA32F} o \texttt{GL\_RGBA16F}). Los vóxeles vacíos que no intersecan la superficie se inicializan con un valor nulo o un valor centinela (\textit{sentinel value}) fuera del rango de coordenadas (por ejemplo, $(-1, -1, -1)$).
+  \item \textbf{Pasadas iterativas de salto (\textit{Jump Passes}):} Para una resolución cúbica de lado $V$ (donde $V$ es una potencia de dos, tal como 64, 128 o 256), el algoritmo ejecuta $M = \log_2 V$ pasadas sucesivas. En cada iteración $s \in \{0, 1, \dots, M-1\}$, se define una longitud de paso o salto $k$ que se reduce a la mitad en cada paso:
+  \begin{equation}
+    k = \frac{V}{2^{s+1}} \in \left\{ \frac{V}{2}, \frac{V}{4}, \dots, 2, 1 \right\}
+  \end{equation}
+  En cada pasada, cada vóxel $p = (x, y, z)$ del volumen consulta la información de semilla contenida en sus 26 vecinos tridimensionales más su propia posición ($3 \times 3 \times 3 = 27$ muestras en total), desplazados a una distancia espacial de $k$ vóxeles:
+  \begin{equation}
+    \mathcal{N}_k(p) = \left\{ p + k \cdot (\delta_x, \delta_y, \delta_z) \mid \delta_x, \delta_y, \delta_z \in \{-1, 0, 1\} \right\}
+  \end{equation}
+  Para cada vecino $q \in \mathcal{N}_k(p)$ dentro de los límites del volumen, si $q$ almacena una semilla válida $S(q)$, se evalúa la distancia euclídea $\|p - S(q)\|$. El hilo actual selecciona la semilla $S^*$ que minimice la distancia euclídea al punto $p$ y la escribe en la textura de salida. La sincronización se garantiza mediante un esquema de doble \textit{buffer} (\textit{ping-pong}), alternando las texturas de lectura y escritura entre pasadas.
+  \item \textbf{Cálculo de distancia final y asignación de signo:} Tras concluir la pasada final con longitud de salto unitaria ($k=1$), cada vóxel $p$ dispone de las coordenadas de la semilla superficial más cercana que ha logrado propagarse hasta su posición. En una pasada de finalización, se computa la distancia euclídea $\|p - S^*(p)\| \cdot \Delta x_{\text{vóxel}}$ y se le asocia el signo correspondiente obtenido del módulo de determinación topológica, almacenando la distancia final en una textura escalar volumétrica (\texttt{GL\_R32F} o \texttt{GL\_R16F}).
+\end{enumerate}
+
+\subsubsection{Análisis de errores de aproximación y variantes \texorpdfstring{($\text{JFA}+1$, $1+\text{JFA}$)}{(JFA+1, 1+JFA)}}
+
+Aunque JFA exhibe un rendimiento sobresaliente en GPU, no calcula un diagrama de Voronoi estrictamente exacto debido a la naturaleza discreta del muestreo con pasos grandes. En ciertas configuraciones geométricas cóncavas o con características diagonales complejas, una semilla óptima puede quedar ``oculta'' o eclipsada detrás de semillas intermedias durante las fases de saltos largos ($k = V/2, V/4$), impidiendo que su información alcance a vóxeles que formalmente pertenecen a su celda de Voronoi.
+
+Rong y Tan \cite{rong2006} identificaron y cuantificaron esta tasa de error en espacios discretos. Para mitigar estas imprecisiones sin renunciar a la velocidad en GPU, propusieron variantes de compensación:
+
+\begin{itemize}
+  \item \textbf{Variante $\text{JFA}+1$:} Consiste en ejecutar una pasada adicional con tamaño de salto $k=1$ inmediatamente después de finalizar la secuencia regular. Esta iteración suplementaria permite a los vóxeles corregir discontinuidades locales inmediatas en los bordes de Voronoi, reduciendo el error a una fracción casi nula del volumen total.
+  \item \textbf{Variante $1+\text{JFA}$:} Consiste en anteponer una pasada con salto $k=1$ al inicio de la secuencia logarítmica (antes de $k = V/2$), garantizando que las semillas adyacentes de alta curvatura formen un frente continuo antes de proyectarse a grandes distancias.
+\end{itemize}
+
+En el contexto de este proyecto, la cuantificación experimental de este error de propagación frente al método exacto de \textit{compute shaders} constituye uno de los núcleos de investigación analítica del TFM.
+
+\subsection{Iluminación global en tiempo real y reconstrucción espacio-temporal}
+
+Para evaluar de forma cualitativa y cuantitativa la fidelidad de los campos de distancia con signo generados en GPU, es indispensable observar su comportamiento en consultas continuas de trazado de rayos aplicadas a iluminación global interactiva. La ecuación de renderizado \cite{kajiya1986} formaliza el equilibrio energético de la luz en un entorno virtual, definiendo la radiancia saliente $L_o(p, \omega_o)$ desde un punto $p$ hacia la dirección $\omega_o$ como la suma de la radiancia propia emitida $L_e$ y la integral de la radiancia incidente $L_i$ modulada por la función de distribución de reflectancia bidireccional (BRDF) $f_r$ y el factor geométrico del coseno:
+
+\begin{equation}
+  L_o(p, \omega_o) = L_e(p, \omega_o) + \int_{\Omega} f_r(p, \omega_i, \omega_o) \, L_i(p, \omega_i) \, (\omega_i \cdot n) \, d\omega_i
+\end{equation}
+
+En aplicaciones interactivas a frecuencias de refresco elevadas (60 a 120 FPS), la evaluación estocástica de esta integral mediante \textit{path tracing} está restringida a un presupuesto computacional mínimo de una única muestra por píxel (1 SPP, \textit{Sample Per Pixel}). El muestreo a 1 SPP produce una imagen dominada por una varianza estocástica extrema (ruido blanco o granular de alta frecuencia). Si se pretendiera evaluar visualmente el impacto de las discontinuidades geométricas o los errores de un campo SDF sobre una imagen bruta a 1 SPP, el ruido estocástico de Monte Carlo enmascararía por completo cualquier artefacto sutil introducido por la discretización del volumen.
+
+Por esta razón, la arquitectura del TFM integra un \textit{pipeline} de reconstrucción espacio-temporal robusto basado en el algoritmo SVGF (\textit{Spatiotemporal Variance-Guided Filtering}) \cite{schied2017} que filtra la señal luminosa preservando los bordes geométricos mediante cuatro etapas sinérgicas:
+
+\begin{enumerate}
+  \item \textbf{Demodulación de albedo:} Desacopla la reflectancia de los materiales respecto a la irradiancia incidente pura ($E = L / \max(\rho, \epsilon)$), permitiendo que el filtro \textit{wavelet} suavice gradientes luminosos sin difuminar los detalles texturales del material.
+  \item \textbf{Reproyección temporal:} Rastrea los píxeles a través de matrices de transformación históricas y vectores de velocidad, acumulando muestras coherentes a lo largo de fotogramas sucesivos para elevar exponencialmente el recuento efectivo de muestras.
+  \item \textbf{Estimación y seguimiento de varianza:} Evalúa continuamente los momentos estadísticos de la señal luminosa ($\mu_1 = \mathbb{E}[L]$ y $\mu_2 = \mathbb{E}[L^2]$), computando la varianza local $\sigma^2 = \mu_2 - \mu_1^2$ para adaptar dinámicamente la agresividad del filtrado.
+  \item \textbf{Filtrado multiescala À-Trous:} Aplica un filtro espacial separable basado en \textit{wavelets} \cite{dammertz2010} sobre un núcleo $B_3$-spline de $5 \times 5$ en múltiples pasadas \textit{ping-pong} con saltos exponenciales crecientes ($2^i$ píxeles), ponderado por funciones de preservación de bordes (\textit{edge-stopping functions}) que detectan discontinuidades en normales, distancias planares y varianza local.
+\end{enumerate}
+
+Este \textit{pipeline} de reconstrucción espacio-temporal permite evaluar en tiempo real tanto funciones de distancia analíticas codificadas directamente en el shader como texturas volumétricas tridimensionales (\texttt{GL\_TEXTURE\_3D}), desacoplando el análisis de fidelidad del campo de distancias respecto al ruido estocástico propio del muestreo de Montecarlo a baja densidad.
+
+\subsection{Síntesis, aportación e hipótesis del trabajo}
+
+La revisión de la literatura pone de manifiesto una tensión fundamental en la generación de campos de distancia volumétricos a partir de mallas poligonales en GPU. Por un lado, la evaluación directa de la distancia mínima punto-triángulo garantiza exactitud geométrica sobre la cuadrícula discreta, pero presenta una complejidad $\mathcal{O}(V^3 \cdot N_{\text{tris}})$ que penaliza severamente el tiempo de cómputo a medida que aumenta la densidad poligonal. Por otro lado, los métodos de propagación espacial como el algoritmo \textit{Jump Flooding} (JFA) en tres dimensiones reducen el coste de propagación a $\mathcal{O}(V^3 \log_2 V)$, independizándolo del número de triángulos de la malla original, pero introducen errores de aproximación derivados tanto de la discretización inicial de las semillas en la superficie como de las pasadas de salto en el diagrama de Voronoi discreto \cite{rong2006}.
+
+La aportación principal de este trabajo consiste en diseñar, implementar y comparar experimentalmente ambos enfoques bajo condiciones idénticas de hardware y resolución volumétrica, evaluando no solo la discrepancia numérica del campo generado respecto a la solución de referencia, sino también cómo afectan dichas imprecisiones a un caso de uso sensible a los errores del campo como es la iluminación global interactiva por \textit{sphere tracing}. Asimismo, el estudio del generador basado en captura superficial y propagación JFA 3D ofrece una base metodológica extensible a escenarios donde la geometría de entrada se obtiene como proyecciones de profundidad.
+
+A partir de este análisis se formulan las siguientes hipótesis de trabajo que guiarán la evaluación experimental:
+
+\begin{itemize}
+  \item \textbf{H1 (Escalabilidad temporal):} La alternativa basada en captura superficial y propagación mediante JFA 3D presentará un tiempo de generación en GPU significativamente inferior al del método exacto punto-triángulo cuando la complejidad geométrica de la escena sea elevada ($N_{\text{tris}} \gg 10^3$), manteniéndose el coste de las pasadas de propagación prácticamente constante para una resolución volumétrica fija $V^3$.
+  \item \textbf{H2 (Compromiso entre precisión y consumo de memoria):} El campo generado mediante JFA 3D presentará un error numérico acotado (MAE y RMSE inferiores al tamaño métrico de un vóxel en la mayor parte del dominio) a cambio de un mayor requerimiento temporal de memoria de vídeo durante la generación debido a las texturas auxiliares del esquema \textit{ping-pong}.
+  \item \textbf{H3 (Viabilidad en consultas espaciales de iluminación):} Para resoluciones volumétricas medias y altas ($128^3$ y $256^3$), las desviaciones de distancia introducidas por JFA 3D no degradarán de forma crítica la iluminación indirecta difusa de un rebote ni la oclusión ambiental al combinarse con un \textit{surface bias} adaptado al tamaño de vóxel, concentrándose las diferencias visuales perceptibles en las penumbras de contacto y en las cavidades geométricas finas.
+\end{itemize}

@@ -1,0 +1,37 @@
+\clearpage
+\section*{Declaración de uso de recursos de terceros}
+
+\subsection*{Bibliotecas y recursos de software de terceros}
+
+Para el desarrollo de la aplicación y de los procesos de renderizado y cálculo en GPU se han utilizado C++20 y OpenGL 4.6 junto con las siguientes bibliotecas y recursos de terceros:
+
+\begin{itemize}
+  \item \textbf{SDL3:} creación de ventanas, gestión del contexto gráfico OpenGL y tratamiento de eventos de entrada.
+  \item \textbf{GLAD:} carga dinámica de punteros a funciones del perfil Core de OpenGL 4.6.
+  \item \textbf{GLM:} operaciones de álgebra lineal, matrices y transformaciones espaciales.
+  \item \textbf{Assimp:} importación y preprocesamiento de mallas y escenas tridimensionales.
+  \item \textbf{Dear ImGui:} interfaz gráfica de usuario para modificar parámetros en tiempo real, seleccionar modos de visualización y consultar métricas.
+  \item \textbf{stb\_image / stb\_image\_write:} carga de texturas auxiliares y exportación de capturas de pantalla sin pérdida.
+  \item \textbf{hg\_sdf (Mercury):} funciones auxiliares de primitivas analíticas y operadores de geometría constructiva en GLSL empleadas en las escenas de control del visor.
+  \item \textbf{NVIDIA Spatiotemporal Blue Noise (STBN):} máscaras precalculadas de ruido azul espaciotemporal utilizadas en el muestreo estocástico del \textit{path tracer}.
+\end{itemize}
+
+\subsection*{Modelos y escenas tridimensionales}
+
+Se han utilizado \textbf{Cornell Box}, como escena controlada para examinar la iluminación indirecta y las sombras, y \textbf{Crytek Sponza}, para realizar las pruebas con mayor complejidad geométrica y oclusión. Estas escenas se han complementado con modelos geométricos sintéticos de control (esfera y cubo teselados a distintas densidades).
+
+La selección de las versiones concretas y las adaptaciones realizadas se han ajustado a las condiciones de entrada admitidas por los generadores, documentando en la memoria la procedencia y las características de los modelos empleados.
+
+\subsection*{Prototipo previo del autor}
+
+En este proyecto se ha reutilizado como base un prototipo propio de \textit{path tracer} interactivo basado en \textit{ray marching} sobre primitivas SDF analíticas definidas directamente en el shader.
+
+Este desarrollo previo ha servido como punto de partida del visor interactivo y su adaptación ha permitido disponer de un entorno de pruebas validado para inspeccionar los campos volumétricos generados a partir de mallas.
+
+La arquitectura de texturas tridimensionales en GPU, la generación de SDF a partir de mallas poligonales, la implementación de la alternativa basada en JFA en tres dimensiones, el \textit{pipeline} de reducción de ruido espacio-temporal SVGF y la evaluación comparativa se han desarrollado específicamente durante el presente TFM, distinguiéndose de las funcionalidades procedentes del prototipo anterior.
+
+\subsection*{Uso de herramientas de inteligencia artificial}
+
+Se declara el uso de Antigravity (modelos Gemini y Claude) y OpenAI (ChatGPT / Codex) como herramientas de apoyo para estructurar y revisar la redacción técnica de la memoria, asistir en la implementación y depuración de shaders en GLSL y código C++, y analizar alternativas algorítmicas. Entre los \textit{prompts} e instrucciones empleados se incluyen consultas para la revisión estilística e impersonal del documento, el diagnóstico de artefactos numéricos en el filtro SVGF y la estructuración de pruebas automatizadas, cuyo registro detallado de sesiones se recoge en el archivo \path{docs/internal/declaracion_recursos_ia.md} del repositorio.
+
+La revisión del contenido, la selección de los métodos y la validación de las implementaciones y de los resultados han sido responsabilidad exclusiva del autor. Las respuestas de estas herramientas no han sustituido la consulta de las fuentes bibliográficas originales ni la comprobación experimental.

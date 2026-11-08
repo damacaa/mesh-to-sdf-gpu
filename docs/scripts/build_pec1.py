@@ -144,7 +144,7 @@ def main():
     repo_root = script_dir.parent.parent
     docs_dir = repo_root / 'docs'
 
-    template_path = str(docs_dir / 'TFx_Plantilla_Memoria_es.docx')
+    template_path = str(docs_dir / 'internal' / 'TFx_Plantilla_Memoria_es.docx')
     output_path = str(docs_dir / 'damaca_PEC1.docx')
     output_pdf = str(docs_dir / 'damaca_PEC1.pdf')
 

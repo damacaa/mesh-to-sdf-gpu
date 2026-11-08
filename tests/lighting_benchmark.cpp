@@ -489,7 +489,7 @@ int main(int argc, char** argv)
             if (option == "--help")
             {
                 std::cout << "Usage: tfm_lighting_benchmark --config FILE --output NEW_DIRECTORY [--frames N]\n"
-                    << "The benchmark uses a fixed camera and linear RGB. See docs/benchmark_iluminacion.md.\n";
+                    << "The benchmark uses a fixed camera and linear RGB. See docs/internal/benchmark_iluminacion.md.\n";
                 return 0;
             }
             require(i + 1 < argc, "Missing value for " + option);

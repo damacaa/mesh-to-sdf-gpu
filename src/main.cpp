@@ -42,8 +42,8 @@ int main(int argc, char* argv[])
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-	int windowWidth = 960;
-	int windowHeight = 540;
+	int windowWidth = 1920;
+	int windowHeight = 1080;
 
 	SDL_Window* window = SDL_CreateWindow(
 		"TFM Path Tracer Prototype",

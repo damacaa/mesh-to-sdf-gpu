@@ -1,4 +1,9 @@
 \documentclass{uoc_memoria}
+\usetikzlibrary{calc, shapes.geometric, arrows.meta, positioning, babel}
+
+% Configuración tipográfica para título extenso de TFM
+\tfmtitlefont{24}{29}
+\tfmsubtitlefont{15}{19}
 
 % Metadatos del Trabajo Final de Máster
 \title{Generación acelerada en GPU de campos de distancia con signo (SDF) a partir de mallas poligonales}
@@ -8,18 +13,24 @@
 \tfmarea{Programación Gráfica y Motores de Videojuegos}
 \tfmtutor{Gonzalo Nicolás Barreales}
 \tfmpra{Joan Arnedo Moreno}
-\tfmdate{11/2026}
+\tfmdate{8/11/2026}
 \tfmlanguage{Castellano}
-\tfmkeywords{Campos de distancia con signo, aceleración en GPU, iluminación global}
+\tfmkeywords{Campos de distancia con signo, generación acelerada en GPU, iluminación global}
 
 % Resumen en castellano
 \tfmabstractes{%
-Este Trabajo Final de Máster diseña, implementa y evalúa dos métodos de generación de campos de distancia con signo (\textit{Signed Distance Fields}, SDF) volumétricos en GPU a partir de mallas poligonales. Estas representaciones permiten consultas de distancia para trazado de rayos por software, pero su cálculo resulta costoso al aumentar la resolución del volumen y la complejidad geométrica. Se desarrolla un método base por fuerza bruta mediante \textit{compute shaders} y una alternativa de propagación espacial basada en el algoritmo \textit{Jump Flooding} (JFA) tridimensional con captura rasterizada de superficie. La validación se apoya en un visor interactivo con trazado de caminos híbrido y filtro espacio-temporal SVGF.
+Este Trabajo Final de Máster propone diseñar, implementar y evaluar dos métodos de generación de campos de distancia con signo (\textit{Signed Distance Fields}, SDF) volumétricos en GPU a partir de mallas poligonales. Estas representaciones permiten realizar consultas de distancia para el trazado de rayos por software, pero su generación puede resultar costosa al aumentar la resolución del volumen y la complejidad de la geometría.\par\vspace{1mm}
+Se desarrollará un método base de cálculo de distancias mediante \textit{compute shaders} y una alternativa que combine la captura de datos de superficie por rasterización con el algoritmo \textit{Jump Flooding} (JFA) en tres dimensiones. El método base se comprobará con geometrías de control antes de utilizarlo como referencia.\par\vspace{1mm}
+Los campos generados se integrarán en un visor interactivo construido a partir de un prototipo previo del autor. El visor permitirá examinar el volumen y observar su aplicación a iluminación indirecta difusa de un rebote, oclusión ambiental y sombras suaves. Su función será apoyar la evaluación, sin constituir un motor gráfico de propósito general.\par\vspace{1mm}
+La comparación analizará el tiempo de generación, el consumo de memoria de vídeo y el error de distancia sobre un conjunto delimitado de escenas. Se espera identificar las ventajas y limitaciones de cada método, sin presuponer una mejora uniforme en todas las condiciones. Esta segunda entrega consolida la introducción y presenta el estado del arte, la estrategia de desarrollo, las herramientas, el protocolo experimental y el visor interactivo de validación ya implementado.
 }
 
 % Abstract en inglés (cumple ASD-STE100)
 \tfmabstracten{%
-This Master's Thesis designs, implements, and evaluates two GPU-accelerated volumetric signed distance field (SDF) generation methods from polygonal meshes. Distance fields enable efficient distance queries for software ray tracing, but computing them becomes expensive as grid resolution and geometric complexity increase. This work develops a brute-force compute shader baseline and an alternative spatial propagation pipeline using 3D Jump Flooding (JFA) with rasterized surface initialization. An interactive hybrid path tracer with SVGF spatiotemporal denoising provides the experimental validation framework.
+This master's thesis proposes the design, implementation, and evaluation of two GPU methods for generating volumetric Signed Distance Fields (SDFs) from polygonal meshes. These representations support distance queries for software ray tracing, but their generation can become computationally expensive as volume resolution and geometric complexity increase.\par\vspace{1mm}
+A baseline distance computation method will be implemented using compute shaders. An alternative approach will combine rasterized surface data with the three-dimensional Jump Flooding Algorithm (JFA). The baseline will first be checked against control geometries with known distances before being used as a reference.\par\vspace{1mm}
+The generated fields will be integrated into an interactive viewer adapted from a prototype previously developed by the author. The viewer will support volume inspection and demonstrate one-bounce diffuse indirect lighting, ambient occlusion, and soft shadows. It will serve as an evaluation tool rather than a general-purpose graphics engine.\par\vspace{1mm}
+The experimental comparison will examine generation time, video memory consumption, and distance error across a limited set of test scenes. The aim is to identify the advantages and limitations of each method without assuming consistent improvements under all conditions. This second submission presents the state of the art, the development strategy, the experimental protocol, and the interactive viewer for validation.
 }
 
 \begin{document}
@@ -53,21 +64,13 @@ Esta obra está sujeta a una licencia de Reconocimiento-NoComercial-SinObraDeriv
 
 \makefichaproyecto
 
-% -------------------------------------------------------------
-% AGRADECIMIENTOS
-% -------------------------------------------------------------
-\clearpage
-\section*{Agradecimientos}
-
-Agradecimientos del autor a las personas, empresas o instituciones que han contribuido en la realización de este proyecto.
+\vspace{2.5mm}
+\noindent{Repositorio del código / Code repository:} \url{https://github.com/damacaa/mesh-to-sdf-gpu}
 
 % -------------------------------------------------------------
 % DECLARACIÓN DE RECURSOS DE TERCEROS
 % -------------------------------------------------------------
-\clearpage
-\section*{Declaración de uso de recursos de terceros}
-
-En el desarrollo de este trabajo se han utilizado bibliotecas de software de terceros, recursos multimedia externos y herramientas de Inteligencia Artificial para tareas de asistencia en edición, estructuración y verificación técnica. El registro pormenorizado se mantiene en la documentación académica del proyecto.
+\input{capitulos/00_declaracion_recursos}
 
 % -------------------------------------------------------------
 % ÍNDICE Y LISTAS
@@ -99,67 +102,14 @@ En el desarrollo de este trabajo se han utilizado bibliotecas de software de ter
 \pagenumbering{arabic}
 \setcounter{page}{1}
 
-\section{Introducción}
-
-\subsection{Contexto y justificación del Trabajo}
-Texto de contexto y justificación...
-
-\subsection{Objetivos del Trabajo}
-Texto de objetivos...
-
-\subsection{Impacto en sostenibilidad, ético-social y de diversidad}
-Texto de impactos...
-
-\subsection{Enfoque y método seguido}
-Texto de enfoque y metodología...
-
-\subsection{Planificación del Trabajo}
-Texto de planificación...
-
-\subsection{Breve sumario de productos obtenidos}
-Resumen de productos...
-
-\subsection{Breve descripción de los otros capítulos de la memoria}
-Descripción capitular...
-
-\clearpage
-\section{Estado del arte}
-Texto del estado del arte...
-
-\clearpage
-\section{Materiales y métodos}
-Texto de materiales y métodos...
-
-\clearpage
-\section{Diseño}
-Texto de diseño...
-
-\clearpage
-\section{Resultados}
-Texto de resultados...
-
-\clearpage
-\section{Conclusiones y Trabajo futuro}
-
-\subsection{Conclusiones}
-Texto de conclusiones...
-
-\subsection{Seguimiento de la planificación}
-Texto de seguimiento...
-
-\subsection{Líneas de futuro}
-Texto de líneas de futuro...
-
-\clearpage
-\section{Glosario}
-Definición de términos...
-
-\clearpage
-\section{Bibliografía}
-Lista numerada de referencias bibliográficas...
-
-\clearpage
-\section{Anexos}
-Anexos complementarios...
+\input{capitulos/01_introduccion}
+\input{capitulos/02_estado_del_arte}
+\input{capitulos/03_materiales_y_metodos}
+\input{capitulos/04_diseno}
+\input{capitulos/05_resultados}
+\input{capitulos/06_conclusiones}
+\input{capitulos/07_glosario}
+\input{capitulos/08_bibliografia}
+\input{capitulos/09_anexos}
 
 \end{document}

@@ -2,7 +2,7 @@
 \ProvidesClass{uoc_memoria}[2026/10/24 v1.0 UOC Master Thesis Document Class]
 
 % Base class
-\LoadClass[12pt,a4paper]{article}
+\LoadClass[11pt,a4paper]{article}
 
 % Geometry
 \RequirePackage[
@@ -25,26 +25,68 @@
 \definecolor{shadecolor}{HTML}{FFFF00}
 \definecolor{uocbordergray}{HTML}{CCCCCC}
 
+% Math packages
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+
 % Font and Language support (XeLaTeX)
 \RequirePackage{fontspec}
 \RequirePackage[spanish,es-tabla]{babel}
 
-\IfFontExistsTF{Arial}{
+\newcommand{\uoc@loadarialfrom}[1]{%
   \setmainfont{Arial}[
-    BoldFont={Arial Bold},
-    ItalicFont={Arial Italic},
-    BoldItalicFont={Arial Bold Italic}
-  ]
-}{
-  \IfFontExistsTF{Liberation Sans}{
-    \setmainfont{Liberation Sans}[
-      BoldFont={Liberation Sans Bold},
-      ItalicFont={Liberation Sans Italic},
-      BoldItalicFont={Liberation Sans Bold Italic}
-    ]
-  }{
-    \setmainfont{DejaVu Sans}
-  }
+    Path = #1,
+    Extension = .ttf,
+    UprightFont = Arial,
+    BoldFont = Arialbd,
+    ItalicFont = Ariali,
+    BoldItalicFont = Arialbi
+  ]%
+  \setsansfont{Arial}[
+    Path = #1,
+    Extension = .ttf,
+    UprightFont = Arial,
+    BoldFont = Arialbd,
+    ItalicFont = Ariali,
+    BoldItalicFont = Arialbi
+  ]%
+}
+
+\IfFileExists{docs/fonts/Arial.ttf}{%
+  \uoc@loadarialfrom{docs/fonts/}%
+}{%
+  \IfFileExists{fonts/Arial.ttf}{%
+    \uoc@loadarialfrom{fonts/}%
+  }{%
+    \IfFontExistsTF{Arial}{%
+      \setmainfont{Arial}[
+        BoldFont={Arial Bold},
+        ItalicFont={Arial Italic},
+        BoldItalicFont={Arial Bold Italic}
+      ]%
+      \setsansfont{Arial}[
+        BoldFont={Arial Bold},
+        ItalicFont={Arial Italic},
+        BoldItalicFont={Arial Bold Italic}
+      ]%
+    }{%
+      \IfFontExistsTF{Liberation Sans}{%
+        \setmainfont{Liberation Sans}[
+          BoldFont={Liberation Sans Bold},
+          ItalicFont={Liberation Sans Italic},
+          BoldItalicFont={Liberation Sans Bold Italic}
+        ]%
+        \setsansfont{Liberation Sans}[
+          BoldFont={Liberation Sans Bold},
+          ItalicFont={Liberation Sans Italic},
+          BoldItalicFont={Liberation Sans Bold Italic}
+        ]%
+      }{%
+        \setmainfont{DejaVu Sans}%
+        \setsansfont{DejaVu Sans}%
+      }%
+    }%
+  }%
 }
 \renewcommand{\familydefault}{\sfdefault}
 
@@ -127,6 +169,7 @@
   \fi}
 
 % Hyperref
+\PassOptionsToPackage{hyphens}{url}
 \RequirePackage[hidelinks]{hyperref}
 \hypersetup{
   colorlinks=true,
@@ -137,6 +180,12 @@
 }
 
 % Variables for Title and Project metadata
+\newcommand{\@tfmtitlefont}{\fontsize{46}{54}}
+\newcommand{\tfmtitlefont}[2]{\renewcommand{\@tfmtitlefont}{\fontsize{#1}{#2}}}
+
+\newcommand{\@tfmsubtitlefont}{\fontsize{26}{32}}
+\newcommand{\tfmsubtitlefont}[2]{\renewcommand{\@tfmsubtitlefont}{\fontsize{#1}{#2}}}
+
 \newcommand{\@tfmsubtitle}{}
 \newcommand{\tfmsubtitle}[1]{\renewcommand{\@tfmsubtitle}{#1}}
 
@@ -233,18 +282,17 @@
     \fill[uoccyan] (boxNW) rectangle ++(185mm, -74.2mm);
     \draw[black, line width=0.5pt] (boxNW) rectangle ++(185mm, -74.2mm);
     
-    % Title inside top cyan box (wraps "Final" onto second line)
-    \node[anchor=north west, inner sep=0pt, text width=155mm] at ([xshift=12mm, yshift=-10mm]boxNW) {%
-      \hyphenpenalty=10000%
-      {\fontsize{46}{54}\bfseries\textcolor{uocblue}{\@title}\par}%
+    % Title and Subtitle inside top cyan box
+    \node[anchor=north west, inner sep=0pt, text width=160mm] at ([xshift=12mm, yshift=-8mm]boxNW) {%
+      \begin{minipage}[t][58mm][s]{160mm}
+        \hyphenpenalty=10000%
+        {\@tfmtitlefont\bfseries\textcolor{uocblue}{\@title}\par}%
+        \ifx\@tfmsubtitle\@empty\else%
+          \vfill%
+          {\@tfmsubtitlefont\selectfont\textcolor{uocblue}{\@tfmsubtitle}\par}%
+        \fi%
+      \end{minipage}%
     };
-    
-    % Subtitle inside top cyan box (30pt regular dark blue, anchored near bottom)
-    \ifx\@tfmsubtitle\@empty\else%
-      \node[anchor=south west, inner sep=0pt, text width=160mm] at ([xshift=12mm, yshift=-66mm]boxNW) {%
-        {\fontsize{26}{32}\selectfont\textcolor{uocblue}{\@tfmsubtitle}\par}%
-      };
-    \fi%
     
     % 2. Bottom box: width 185mm, height 172.8mm
     \coordinate (bottomNW) at ([yshift=-74.2mm]boxNW);
@@ -281,18 +329,19 @@
 }
 
 % Project Sheet (Ficha del Trabajo Final) command
+\newcommand{\@tfmabstractfontsize}{\fontsize{8}{9.8}\selectfont}
+\newcommand{\tfmabstractfontsize}[2]{\renewcommand{\@tfmabstractfontsize}{\fontsize{#1}{#2}\selectfont}}
+
 \newcommand{\makefichaproyecto}{%
-  \begin{center}%
-    {\fontsize{12}{14}\bfseries FICHA DEL TRABAJO FINAL}%
-  \end{center}%
-  \vspace{2mm}%
+  {\centering\fontsize{12}{14}\bfseries FICHA DEL TRABAJO FINAL\par}%
+  \vspace{1.5mm}%
   \noindent%
   \setlength{\fboxsep}{0pt}%
-  \setlength{\fboxrule}{2.25pt}%
+  \setlength{\fboxrule}{1.5pt}%
   \fbox{%
     \setlength{\arrayrulewidth}{0.5pt}%
-    \renewcommand{\arraystretch}{1.32}%
-    \begin{tabularx}{\dimexpr\textwidth-4.5pt\relax}{|>{\raggedleft\arraybackslash\bfseries}p{65mm}|>{\raggedright\arraybackslash}X|}
+    \renewcommand{\arraystretch}{1.05}%
+    \begin{tabularx}{\dimexpr\textwidth-3pt\relax}{|>{\raggedleft\arraybackslash\bfseries}p{62mm}|>{\raggedright\arraybackslash}X|}
       \hline
       Título del trabajo: & \cellcolor{tablegray} \ifx\@fichatitle\@empty\@title\else\@fichatitle\fi \\ \hline
       Nombre del autor: & \cellcolor{tablegray} \ifx\@fichastudent\@empty\@tfmstudent\else\@fichastudent\fi \\ \hline
@@ -304,9 +353,9 @@
       Idioma del trabajo: & \cellcolor{tablegray} \ifx\@fichalanguage\@empty\@tfmlanguage\else\@fichalanguage\fi \\ \hline
       Palabras clave & \cellcolor{tablegray} \ifx\@fichakeywords\@empty\@tfmkeywords\else\@fichakeywords\fi \\ \hline
       \multicolumn{2}{|l|}{\textbf{Resumen del Trabajo}} \\ \hline
-      \multicolumn{2}{|>{\raggedright\arraybackslash}p{\dimexpr\textwidth-4.5pt-2\tabcolsep-2\arrayrulewidth\relax}|}{\cellcolor{tablegray}\fontsize{11}{14}\selectfont \@tfmabstractes} \\ \hline
+      \multicolumn{2}{|>{\arraybackslash}p{\dimexpr\textwidth-4pt-2\tabcolsep-2\arrayrulewidth\relax}|}{\cellcolor{tablegray}\@tfmabstractfontsize \@tfmabstractes} \\ \hline
       \multicolumn{2}{|l|}{\textbf{Abstract}} \\ \hline
-      \multicolumn{2}{|>{\raggedright\arraybackslash}p{\dimexpr\textwidth-4.5pt-2\tabcolsep-2\arrayrulewidth\relax}|}{\cellcolor{tablegray}\fontsize{11}{14}\selectfont \@tfmabstracten} \\ \hline
+      \multicolumn{2}{|>{\arraybackslash}p{\dimexpr\textwidth-4pt-2\tabcolsep-2\arrayrulewidth\relax}|}{\cellcolor{tablegray}\@tfmabstractfontsize \@tfmabstracten} \\ \hline
     \end{tabularx}%
   }%
   \par

@@ -1,0 +1,21 @@
+\clearpage
+\section{Glosario}
+
+\begin{description}
+  \item[BRDF (\textit{Bidirectional Reflectance Distribution Function}):] Función matemática de cuatro dimensiones que define cómo la luz se refleja en una superficie opaca en función de las direcciones incidente y saliente.
+  \item[Compute Shader:] Etapa de \textit{shader} programable en la GPU no ligada al \textit{pipeline} gráfico tradicional de rasterización, que permite ejecutar cálculos masivamente paralelos de propósito general (GPGPU) sobre \textit{buffers} y texturas arbitrarias.
+  \item[DSRM (\textit{Design Science Research Methodology}):] Metodología formal de investigación orientada a la creación, desarrollo y evaluación iterativa de artefactos tecnológicos prácticos.
+  \item[FBO (\textit{Framebuffer Object}):] Objeto de OpenGL que agrupa destinos de renderizado fuera de pantalla (texturas de color, profundidad y stencil) para procesamiento diferido.
+  \item[G-Buffer (\textit{Geometry Buffer}):] Conjunto de texturas en espacio de pantalla que almacenan información geométrica (posiciones, normales, albedo, rugosidad) generada por el pase de geometría en renderizado diferido.
+  \item[JFA (\textit{Jump Flooding Algorithm}):] Algoritmo paralelo de propagación que aproxima transformadas de distancia euclídea y diagramas de Voronoi en cuadrículas discretas en un número logarítmico de pasos iterativos de salto ($\mathcal{O}(V^3 \log_2 V)$).
+  \item[MRT (\textit{Multiple Render Targets}):] Característica de las GPUs y APIs gráficas que permite a un shader de fragmentos escribir simultáneamente en múltiples texturas en una única pasada de renderizado.
+  \item[Path Tracing:] Algoritmo de renderizado basado en integración de Monte Carlo que simula numéricamente el transporte global de la luz mediante el trazado de trayectorias estocásticas de rayos.
+  \item[Ray Marching:] Técnica de trazado de rayos iterativa en la que el rayo avanza en incrementos discretos a lo largo de su vector director hasta intersectar un umbral de proximidad a la superficie.
+  \item[SDF (\textit{Signed Distance Field}):] Campo escalar continuo o discretizado que almacena la distancia euclídea mínima desde cualquier punto del espacio a la superficie geométrica más cercana, codificando el interior mediante valores negativos y satisfaciendo la ecuación \textit{eikonal}.
+  \item[Sphere Tracing:] Variante acelerada de \textit{ray marching} aplicable a funciones SDF en la que la magnitud del paso de avance es exactamente igual a la distancia devuelta por el campo en la posición actual del rayo.
+  \item[SPP (\textit{Samples Per Pixel}):] Número de trayectorias de rayos primarios muestreadas estocásticamente por cada píxel de la imagen en un fotograma determinado.
+  \item[SSBO (\textit{Shader Storage Buffer Object}):] \textit{Buffer} de memoria en GPU accesible en lectura y escritura por los shaders, caracterizado por su gran capacidad de almacenamiento y soporte para estructuras complejas de datos con alineamiento estandarizado (\texttt{std430}).
+  \item[SVGF (\textit{Spatiotemporal Variance-Guided Filtering}):] Técnica de reconstrucción de imágenes en tiempo real para iluminación global que combina acumulación temporal, recorte de historial y filtrado espacial \textit{wavelet} À-Trous ponderado por varianza.
+  \item[Voxelización:] Proceso de discretización espacial que convierte una representación de superficie geométrica continua (como una malla de triángulos) en una aproximación volumétrica compuesta por elementos cúbicos de volumen (\textit{vóxeles}) sobre una cuadrícula regular tridimensional.
+  \item[VRAM (\textit{Video Random Access Memory}):] Memoria física de alta velocidad integrada en la tarjeta gráfica dedicada a almacenar texturas, \textit{buffers} de geometría y destinos de renderizado.
+\end{description}

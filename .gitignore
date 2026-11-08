@@ -63,6 +63,7 @@ imgui.ini
 *.ppm
 screenshot_*.png
 test_*.png
+!docs/assets/*.png
 
 # LaTeX build artifacts
 *.aux

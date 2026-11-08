@@ -1,6 +1,6 @@
 # Compile script for LaTeX documents on Windows using WSL or local xelatex
 param (
-    [string]$Target = "docs/plantilla_memoria.tex"
+    [string]$Target = "docs/memoria.tex"
 )
 
 $ErrorActionPreference = "Stop"
