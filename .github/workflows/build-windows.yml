@@ -1,0 +1,37 @@
+name: Build Windows Native
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Project
+        run: |
+          mkdir build
+          cd build
+          cmake -DDEPLOY_STANDALONE=ON -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --config Release
+
+      - name: Prepare Artifact
+        run: |
+          mkdir -p game_export
+          cp build/Release/tfm_pathtracer.exe game_export/
+          cp -r build/Release/assets game_export/
+          cp -r build/Release/shaders game_export/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfm-pathtracer-windows
+          path: game_export/

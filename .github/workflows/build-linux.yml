@@ -1,0 +1,45 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          cmake build-essential libgl-dev libegl-dev
+          libwayland-dev libxkbcommon-dev wayland-protocols
+          libasound2-dev libpulse-dev libpipewire-0.3-dev
+          libx11-dev libxext-dev libxcursor-dev libxi-dev
+          libxrandr-dev libxss-dev libxtst-dev
+
+      - name: Build Project
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release -DDEPLOY_STANDALONE=ON ..
+          cmake --build . --config Release -j
+
+      - name: Prepare Artifact
+        run: |
+          mkdir -p game_export
+          cp build/tfm_pathtracer game_export/
+          cp -r build/assets game_export/
+          cp -r build/shaders game_export/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfm-pathtracer-linux
+          path: game_export/

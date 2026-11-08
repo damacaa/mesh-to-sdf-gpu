@@ -85,6 +85,33 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+option(DEPLOY_STANDALONE "Configure relative paths and copy assets for standalone distribution" OFF)
+
+if(DEPLOY_STANDALONE)
+    set(SHADERS_PATH_VALUE "./shaders")
+    set(ASSETS_PATH_VALUE "./assets")
+else()
+    set(SHADERS_PATH_VALUE "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+    set(ASSETS_PATH_VALUE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+endif()
+
+target_compile_definitions(tfm_pathtracer PRIVATE
+    SHADERS_PATH="${SHADERS_PATH_VALUE}"
+    ASSETS_PATH="${ASSETS_PATH_VALUE}"
+)
+
+if(DEPLOY_STANDALONE)
+    add_custom_command(TARGET tfm_pathtracer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:tfm_pathtracer>/assets"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+            "$<TARGET_FILE_DIR:tfm_pathtracer>/shaders"
+        COMMENT "Copy assets and shaders for standalone distribution"
+    )
+endif()
+
 option(TFM_BUILD_BENCHMARKS "Build the lighting quality benchmark" OFF)
 if(TFM_BUILD_BENCHMARKS)
     set(BENCHMARK_RENDER_SOURCES ${SOURCES})
@@ -106,11 +133,6 @@ if(TFM_BUILD_BENCHMARKS)
         set_tests_properties(lighting_benchmark_smoke PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
     endif()
 endif()
-
-target_compile_definitions(tfm_pathtracer PRIVATE
-    SHADERS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
-    ASSETS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets"
-)
 
 option(TFM_BUILD_RENDER_TESTS "Build GPU regression tests" OFF)
 if(TFM_BUILD_RENDER_TESTS)
