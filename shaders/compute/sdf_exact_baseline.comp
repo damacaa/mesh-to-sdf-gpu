@@ -1,0 +1,83 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#ifndef SDF_IMAGE_FORMAT
+#define SDF_IMAGE_FORMAT r32f
+#endif
+
+layout(SDF_IMAGE_FORMAT, binding = 0) uniform writeonly image3D u_sdfTexture;
+
+#include "sdf_common.glsl"
+
+layout(std430, binding = 0) readonly buffer TriangleBuffer
+{
+	GpuTriangle triangles[];
+};
+
+uniform ivec3 u_resolution;
+uniform float u_worldSize;
+uniform vec3 u_worldOffset;
+uniform uint u_triangleCount;
+
+shared GpuTriangle s_tile[64];
+
+void main()
+{
+	ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+	bool inBounds = all(lessThan(coord, u_resolution));
+	vec3 worldPos = inBounds ? voxelToWorld(coord, u_resolution, u_worldSize, u_worldOffset) : vec3(0.0);
+
+	float minDistSq = u_worldSize * u_worldSize * 16.0;
+	float totalSolidAngle = 0.0;
+	uint localIdx = gl_LocalInvocationIndex;
+
+	for (uint base = 0u; base < u_triangleCount; base += 64u)
+	{
+		uint loadIdx = base + localIdx;
+		if (loadIdx < u_triangleCount)
+		{
+			s_tile[localIdx] = triangles[loadIdx];
+		}
+		barrier();
+
+		if (inBounds)
+		{
+			uint tileCount = min(64u, u_triangleCount - base);
+			for (uint i = 0u; i < tileCount; ++i)
+			{
+				vec3 a = s_tile[i].v0.xyz;
+				vec3 b = s_tile[i].v1.xyz;
+				vec3 c = s_tile[i].v2.xyz;
+
+				vec3 bary;
+				vec3 q = closestPointOnTriangle(worldPos, a, b, c, bary);
+				vec3 diff = worldPos - q;
+				float dSq = dot(diff, diff);
+				if (dSq < minDistSq)
+				{
+					minDistSq = dSq;
+				}
+
+				totalSolidAngle += triangleSolidAngle(worldPos, a, b, c);
+			}
+		}
+		barrier();
+	}
+
+	if (!inBounds)
+	{
+		return;
+	}
+
+	if (u_triangleCount == 0u)
+	{
+		imageStore(u_sdfTexture, coord, vec4(u_worldSize, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	float winding = totalSolidAngle / (4.0 * 3.14159265359);
+	float signVal = (abs(winding) >= 0.5) ? -1.0 : 1.0;
+	float dist = signVal * sqrt(max(minDistSq, 0.0));
+	imageStore(u_sdfTexture, coord, vec4(dist, 0.0, 0.0, 0.0));
+}

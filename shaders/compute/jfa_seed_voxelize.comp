@@ -1,0 +1,83 @@
+#version 460 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(r32ui, binding = 2) uniform uimage3D u_seedAtomics;
+
+#include "sdf_common.glsl"
+
+layout(std430, binding = 0) readonly buffer TriangleBuffer
+{
+	GpuTriangle triangles[];
+};
+
+uniform ivec3 u_resolution;
+uniform float u_worldSize;
+uniform vec3 u_worldOffset;
+uniform uint u_triangleCount;
+
+void main()
+{
+	uint triIdx = gl_GlobalInvocationID.x;
+	if (triIdx >= u_triangleCount || triIdx >= 0xFFFFFu)
+	{
+		return;
+	}
+
+	GpuTriangle tri = triangles[triIdx];
+	vec3 a = tri.v0.xyz;
+	vec3 b = tri.v1.xyz;
+	vec3 c = tri.v2.xyz;
+
+	vec3 triCross = cross(b - a, c - a);
+	float areaSq = dot(triCross, triCross);
+	if (areaSq < 1e-20)
+	{
+		return;
+	}
+	vec3 triNormal = triCross * inversesqrt(areaSq);
+
+	float voxelSize = u_worldSize / float(u_resolution.x);
+	vec3 gridOrigin = u_worldOffset - vec3(u_worldSize * 0.5);
+
+	vec3 triMin = min(a, min(b, c));
+	vec3 triMax = max(a, max(b, c));
+
+	ivec3 rawMin = ivec3(floor((triMin - gridOrigin) / voxelSize)) - ivec3(1);
+	ivec3 rawMax = ivec3(floor((triMax - gridOrigin) / voxelSize)) + ivec3(1);
+	if (any(lessThan(rawMax, ivec3(0))) || any(greaterThanEqual(rawMin, u_resolution)))
+	{
+		return;
+	}
+
+	ivec3 vMin = max(rawMin, ivec3(0));
+	ivec3 vMax = min(rawMax, u_resolution - ivec3(1));
+
+	float shellRadius = voxelSize * 1.75;
+	float maxQuantDist = voxelSize * 2.0;
+
+	for (int z = vMin.z; z <= vMax.z; ++z)
+	{
+		for (int y = vMin.y; y <= vMax.y; ++y)
+		{
+			for (int x = vMin.x; x <= vMax.x; ++x)
+			{
+				ivec3 coord = ivec3(x, y, z);
+				vec3 voxelPos = voxelToWorld(coord, u_resolution, u_worldSize, u_worldOffset);
+				if (abs(dot(voxelPos - a, triNormal)) > shellRadius)
+				{
+					continue;
+				}
+				vec3 bary;
+				vec3 q = closestPointOnTriangle(voxelPos, a, b, c, bary);
+				float dist = length(voxelPos - q);
+				if (dist <= shellRadius)
+				{
+					uint quantizedDist = uint(clamp(dist / maxQuantDist, 0.0, 1.0) * 4095.0);
+					uint packedSeed = (quantizedDist << 20u) | (triIdx & 0xFFFFFu);
+					imageAtomicMin(u_seedAtomics, coord, packedSeed);
+				}
+			}
+		}
+	}
+}

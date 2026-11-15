@@ -19,7 +19,7 @@ namespace renderer
 		m_resolveShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/linear_to_srgb.frag");
 		m_fxaaShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/fxaa.frag");
 		m_blitShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/postprocess/blit.frag");
-		m_sdfComputeShader = ComputeShader(shadersRoot + "/compute/generate_3d_sdf.comp");
+		m_sdfGenerator.init(shadersRoot);
 
 		if (m_config.enableAntialiasing)
 		{
@@ -60,6 +60,8 @@ namespace renderer
 			tex.dispose();
 		}
 		m_scene3DTextures.clear();
+		m_referenceSdfTexture.dispose();
+		m_sdfGenerator.dispose();
 		m_stbnTexture0.dispose();
 		m_stbnTexture1.dispose();
 		freeResources();
@@ -220,12 +222,9 @@ namespace renderer
 		}
 		m_scene3DTextures.clear();
 		m_scene3DTextures.resize(scenes.size());
-
-		for (size_t i = 0; i < scenes.size(); ++i)
-		{
-			generateSdf3DTexture(static_cast<int>(i), scenes[i].sdfBakeMode, scenes[i].sdfTextureResolution,
-								scenes[i].sdfTextureWorldSize, scenes[i].sdfTextureOffset);
-		}
+		m_referenceSdfTexture.dispose();
+		m_refResolution = 0;
+		m_lastSdfStats = SdfStats{};
 	}
 
 	void PathTracerPipeline::setScene(const SceneDefinition& scene, int sceneIndex)
@@ -236,17 +235,52 @@ namespace renderer
 		m_config.sdfTextureWorldSize = scene.sdfTextureWorldSize;
 		m_config.sdfTextureOffset = scene.sdfTextureOffset;
 		m_config.sdfTextureMaterialId = scene.sdfTextureMaterialId;
-		m_config.sdfBakeMode = scene.sdfBakeMode;
+		m_config.sdfMethod = scene.sdfMethod;
+		m_config.jfaVariant = scene.jfaVariant;
+		m_config.sdfFormat = scene.sdfFormat;
+		m_config.sdfModelPath = scene.sdfModelPath;
+		m_config.autoFitSdfMesh = scene.autoFitSdfMesh;
+		m_config.realtimeSdfUpdate = scene.realtimeSdfUpdate;
+		m_config.accumulateCameraSdfSeeds = scene.accumulateCameraSdfSeeds;
+
+		Camera sceneCam(scene.cameraPosition);
+		sceneCam.yaw = scene.cameraYaw;
+		sceneCam.pitch = scene.cameraPitch;
+		sceneCam.updateVectors();
+		sceneCam.updateMatrix(static_cast<int>(m_config.renderWidth), static_cast<int>(m_config.renderHeight));
+		m_lastCameraMatrix = sceneCam.cameraMatrix;
+		clearAccumulatedSdfSeeds();
 
 		if (m_currentSceneIndex >= static_cast<int>(m_scene3DTextures.size()))
 		{
 			m_scene3DTextures.resize(m_currentSceneIndex + 1);
 		}
 
-		if (m_scene3DTextures[m_currentSceneIndex].id == 0)
+		const bool refMismatch = m_referenceSdfTexture.id != 0
+			&& (m_refResolution != m_config.sdfTextureResolution
+				|| m_refWorldSize != m_config.sdfTextureWorldSize
+				|| m_refWorldOffset != m_config.sdfTextureOffset
+				|| m_refModelPath != m_config.sdfModelPath
+				|| m_refAutoFit != m_config.autoFitSdfMesh);
+		if (refMismatch)
 		{
-			generateSdf3DTexture(m_currentSceneIndex, m_config.sdfBakeMode, m_config.sdfTextureResolution,
-								m_config.sdfTextureWorldSize, m_config.sdfTextureOffset);
+			m_referenceSdfTexture.dispose();
+			m_refResolution = 0;
+			m_lastSdfStats.hasReferenceComparison = false;
+		}
+
+		if (m_config.enableSdf3DTexture && m_scene3DTextures[m_currentSceneIndex].id == 0)
+		{
+			generateSdf3DTexture(
+				m_currentSceneIndex,
+				m_config.sdfMethod,
+				m_config.jfaVariant,
+				m_config.sdfFormat,
+				m_config.sdfTextureResolution,
+				m_config.sdfTextureWorldSize,
+				m_config.sdfTextureOffset,
+				m_config.sdfModelPath,
+				m_config.autoFitSdfMesh);
 		}
 
 		m_sdfShader.setFragmentIncludeCode("shapes", scene.glslShapesCode, true);
@@ -308,43 +342,196 @@ namespace renderer
 		return mask;
 	}
 
-	void PathTracerPipeline::generateSdf3DTexture(int sceneIndex, int bakeMode, int resolution, float worldSize, const glm::vec3& worldOffset)
+	static std::string resolveSdfModelPath(const std::string& modelPath)
 	{
-		if (sceneIndex < 0) return;
+		if (modelPath.empty())
+		{
+			return "";
+		}
+		if (std::filesystem::exists(modelPath))
+		{
+			return modelPath;
+		}
+#ifdef ASSETS_PATH
+		const std::string assetsDir = ASSETS_PATH;
+		const std::string directPath = assetsDir + "/" + modelPath;
+		if (std::filesystem::exists(directPath))
+		{
+			return directPath;
+		}
+		if (modelPath.rfind("assets/", 0) == 0)
+		{
+			const std::string strippedPath = assetsDir + "/" + modelPath.substr(7);
+			if (std::filesystem::exists(strippedPath))
+			{
+				return strippedPath;
+			}
+		}
+#endif
+		return modelPath;
+	}
+
+	void PathTracerPipeline::generateSdf3DTexture(
+		int sceneIndex,
+		SdfMethod method,
+		JfaVariant jfaVariant,
+		SdfFormat format,
+		int resolution,
+		float worldSize,
+		const glm::vec3& worldOffset,
+		const std::string& modelPath,
+		bool autoFit)
+	{
+		if (sceneIndex < 0)
+		{
+			return;
+		}
 		if (sceneIndex >= static_cast<int>(m_scene3DTextures.size()))
 		{
 			m_scene3DTextures.resize(sceneIndex + 1);
 		}
 
-		int res = std::max(resolution, 8);
-		auto& tex = m_scene3DTextures[sceneIndex];
-		if (tex.id == 0 || tex.getWidth() != res || tex.getHeight() != res || tex.getDepth() != res)
+		const std::string resolvedPath = resolveSdfModelPath(modelPath);
+		if (resolvedPath.empty())
 		{
-			tex.allocate(res, res, res, GL_R32F);
+			m_sdfModel = Model();
+			m_loadedSdfModelPath.clear();
+		}
+		else if (resolvedPath != m_loadedSdfModelPath || !m_sdfModel.isValid())
+		{
+			Model loadedModel;
+			if (loadedModel.loadGLTF(resolvedPath))
+			{
+				m_sdfModel = std::move(loadedModel);
+				m_loadedSdfModelPath = resolvedPath;
+			}
+			else
+			{
+				std::cerr << "PathTracerPipeline: Failed to load SDF mesh: " << resolvedPath << std::endl;
+			}
 		}
 
-		m_sdfComputeShader.use();
-		tex.bindImage(0, GL_WRITE_ONLY);
+		const int res = std::max(resolution, 8);
+		SdfGenerationParams params{};
+		params.method = method;
+		params.jfaVariant = jfaVariant;
+		params.format = format;
+		params.resolution = res;
+		params.worldSize = worldSize;
+		params.worldOffset = worldOffset;
+		params.cameraViewProj = m_lastCameraMatrix;
+		params.cameraViewportWidth = static_cast<int>(m_config.renderWidth);
+		params.cameraViewportHeight = static_cast<int>(m_config.renderHeight);
+		params.accumulateSeeds = m_config.accumulateCameraSdfSeeds;
+		params.resetAccumulatedSeeds = m_resetCameraSeedsRequested;
+		m_resetCameraSeedsRequested = false;
+		if (autoFit && m_sdfModel.isValid())
+		{
+			params.modelTransform = m_sdfModel.computeFitTransform(worldSize, worldOffset, 0.15f);
+		}
+		else
+		{
+			params.modelTransform = glm::translate(glm::mat4(1.0f), worldOffset);
+		}
 
-		m_sdfComputeShader.setUniform("u_resolution", glm::ivec3(res, res, res));
-		m_sdfComputeShader.setUniform("u_worldSize", worldSize);
-		m_sdfComputeShader.setUniform("u_worldOffset", worldOffset);
-		m_sdfComputeShader.setUniform("u_bakeMode", bakeMode);
+		m_lastSdfStats = m_sdfGenerator.generate(m_sdfModel, params, m_scene3DTextures[sceneIndex]);
 
-		GLuint groups = static_cast<GLuint>((res + 7) / 8);
-		m_sdfComputeShader.dispatch(groups, groups, groups);
-		m_sdfComputeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		if (m_referenceSdfTexture.id != 0 && !m_config.realtimeSdfUpdate)
+		{
+			const bool matchesRef = (m_refResolution == res
+				&& m_refWorldSize == worldSize
+				&& m_refWorldOffset == worldOffset
+				&& m_refModelPath == resolvedPath
+				&& m_refAutoFit == autoFit);
+			if (matchesRef)
+			{
+				m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[sceneIndex], m_referenceSdfTexture, m_lastSdfStats);
+			}
+			else
+			{
+				m_referenceSdfTexture.dispose();
+				m_refResolution = 0;
+				m_lastSdfStats.hasReferenceComparison = false;
+			}
+		}
 	}
 
 	void PathTracerPipeline::generateSdf3DTexture(int sceneIndex)
 	{
-		generateSdf3DTexture(sceneIndex, m_config.sdfBakeMode, m_config.sdfTextureResolution,
-							m_config.sdfTextureWorldSize, m_config.sdfTextureOffset);
+		generateSdf3DTexture(
+			sceneIndex,
+			m_config.sdfMethod,
+			m_config.jfaVariant,
+			m_config.sdfFormat,
+			m_config.sdfTextureResolution,
+			m_config.sdfTextureWorldSize,
+			m_config.sdfTextureOffset,
+			m_config.sdfModelPath,
+			m_config.autoFitSdfMesh);
 	}
 
 	void PathTracerPipeline::generateSdf3DTexture()
 	{
 		generateSdf3DTexture(m_currentSceneIndex);
+	}
+
+	void PathTracerPipeline::clearAccumulatedSdfSeeds()
+	{
+		m_sdfGenerator.clearPersistentSeeds();
+		m_resetCameraSeedsRequested = true;
+	}
+
+	void PathTracerPipeline::runReferenceComparison()
+	{
+		if (m_currentSceneIndex < 0)
+		{
+			return;
+		}
+		if (m_currentSceneIndex >= static_cast<int>(m_scene3DTextures.size()))
+		{
+			m_scene3DTextures.resize(m_currentSceneIndex + 1);
+		}
+		if (m_scene3DTextures[m_currentSceneIndex].id == 0)
+		{
+			generateSdf3DTexture(m_currentSceneIndex);
+		}
+
+		const std::string resolvedPath = resolveSdfModelPath(m_config.sdfModelPath);
+		if (!resolvedPath.empty() && (resolvedPath != m_loadedSdfModelPath || !m_sdfModel.isValid()))
+		{
+			Model loadedModel;
+			if (loadedModel.loadGLTF(resolvedPath))
+			{
+				m_sdfModel = std::move(loadedModel);
+				m_loadedSdfModelPath = resolvedPath;
+			}
+		}
+
+		const int res = std::max(m_config.sdfTextureResolution, 8);
+		SdfGenerationParams refParams{};
+		refParams.method = SdfMethod::ExactBaseline;
+		refParams.jfaVariant = JfaVariant::Standard;
+		refParams.format = SdfFormat::R32F;
+		refParams.resolution = res;
+		refParams.worldSize = m_config.sdfTextureWorldSize;
+		refParams.worldOffset = m_config.sdfTextureOffset;
+		if (m_config.autoFitSdfMesh && m_sdfModel.isValid())
+		{
+			refParams.modelTransform = m_sdfModel.computeFitTransform(m_config.sdfTextureWorldSize, m_config.sdfTextureOffset, 0.15f);
+		}
+		else
+		{
+			refParams.modelTransform = glm::translate(glm::mat4(1.0f), m_config.sdfTextureOffset);
+		}
+
+		m_sdfGenerator.generate(m_sdfModel, refParams, m_referenceSdfTexture);
+		m_refResolution = res;
+		m_refWorldSize = m_config.sdfTextureWorldSize;
+		m_refWorldOffset = m_config.sdfTextureOffset;
+		m_refModelPath = resolvedPath;
+		m_refAutoFit = m_config.autoFitSdfMesh;
+
+		m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[m_currentSceneIndex], m_referenceSdfTexture, m_lastSdfStats);
 	}
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth, int displayHeight)
@@ -357,6 +544,15 @@ namespace renderer
 		if (shaderChanged || m_sdfShader.hasRecompiled())
 		{
 			resetAccumulation(true);
+		}
+
+		m_lastCameraMatrix = camera.cameraMatrix;
+		if ((m_config.enableSdf3DTexture || m_config.enableSliceInspector)
+			&& m_currentSceneIndex >= 0
+			&& m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
+			&& (m_scene3DTextures[m_currentSceneIndex].id == 0 || m_config.realtimeSdfUpdate))
+		{
+			generateSdf3DTexture(m_currentSceneIndex);
 		}
 
 		bool cameraMoved = (m_oldCameraView != camera.view || m_prevCameraMatrix != camera.cameraMatrix);
@@ -708,6 +904,28 @@ namespace renderer
 		m_resolveShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
 		m_resolveShader.setUniform("u_contrast", m_config.contrast);
 		m_resolveShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
+		m_resolveShader.setUniform("u_enableSliceInspector", m_config.enableSliceInspector ? 1 : 0);
+		m_resolveShader.setUniform("u_sliceAxis", m_config.sliceAxis);
+		m_resolveShader.setUniform("u_slicePosition", m_config.slicePosition);
+		m_resolveShader.setUniform("u_sliceViewMode", m_config.sliceViewMode);
+		m_resolveShader.setUniform("u_sdfWorldSize", m_config.sdfTextureWorldSize);
+		m_resolveShader.setUniform("u_resolution", std::max(m_config.sdfTextureResolution, 8));
+
+		m_resolveShader.setUniform("t_sdfTexture3D", 4);
+		m_resolveShader.setUniform("t_refSdfTexture3D", 5);
+		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
+			&& m_scene3DTextures[m_currentSceneIndex].id != 0)
+		{
+			m_scene3DTextures[m_currentSceneIndex].bind(4);
+			if (m_referenceSdfTexture.id != 0)
+			{
+				m_referenceSdfTexture.bind(5);
+			}
+			else
+			{
+				m_scene3DTextures[m_currentSceneIndex].bind(5);
+			}
+		}
 
 		if (m_config.enableDenoising && finalFilteredTexture)
 		{
@@ -805,6 +1023,28 @@ namespace renderer
 		m_resolveShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
 		m_resolveShader.setUniform("u_contrast", m_config.contrast);
 		m_resolveShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
+		m_resolveShader.setUniform("u_enableSliceInspector", m_config.enableSliceInspector ? 1 : 0);
+		m_resolveShader.setUniform("u_sliceAxis", m_config.sliceAxis);
+		m_resolveShader.setUniform("u_slicePosition", m_config.slicePosition);
+		m_resolveShader.setUniform("u_sliceViewMode", m_config.sliceViewMode);
+		m_resolveShader.setUniform("u_sdfWorldSize", m_config.sdfTextureWorldSize);
+		m_resolveShader.setUniform("u_resolution", std::max(m_config.sdfTextureResolution, 8));
+
+		m_resolveShader.setUniform("t_sdfTexture3D", 4);
+		m_resolveShader.setUniform("t_refSdfTexture3D", 5);
+		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
+			&& m_scene3DTextures[m_currentSceneIndex].id != 0)
+		{
+			m_scene3DTextures[m_currentSceneIndex].bind(4);
+			if (m_referenceSdfTexture.id != 0)
+			{
+				m_referenceSdfTexture.bind(5);
+			}
+			else
+			{
+				m_scene3DTextures[m_currentSceneIndex].bind(5);
+			}
+		}
 
 		if (m_config.enableDenoising)
 		{

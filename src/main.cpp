@@ -123,7 +123,13 @@ int main(int argc, char* argv[])
 			scenes[currentSceneIndex].sdfTextureResolution = pipeline.getConfig().sdfTextureResolution;
 			scenes[currentSceneIndex].sdfTextureWorldSize = pipeline.getConfig().sdfTextureWorldSize;
 			scenes[currentSceneIndex].sdfTextureOffset = pipeline.getConfig().sdfTextureOffset;
-			scenes[currentSceneIndex].sdfBakeMode = pipeline.getConfig().sdfBakeMode;
+			scenes[currentSceneIndex].sdfMethod = pipeline.getConfig().sdfMethod;
+			scenes[currentSceneIndex].jfaVariant = pipeline.getConfig().jfaVariant;
+			scenes[currentSceneIndex].sdfFormat = pipeline.getConfig().sdfFormat;
+			scenes[currentSceneIndex].sdfModelPath = pipeline.getConfig().sdfModelPath;
+			scenes[currentSceneIndex].autoFitSdfMesh = pipeline.getConfig().autoFitSdfMesh;
+			scenes[currentSceneIndex].realtimeSdfUpdate = pipeline.getConfig().realtimeSdfUpdate;
+			scenes[currentSceneIndex].accumulateCameraSdfSeeds = pipeline.getConfig().accumulateCameraSdfSeeds;
 
 			currentSceneIndex = newIndex;
 			pipeline.setScene(scenes[currentSceneIndex], currentSceneIndex);
@@ -177,7 +183,11 @@ int main(int argc, char* argv[])
 			{
 				switchScene(4);
 			}
-			else if (testFrames >= 100)
+			else if (testFrames == 100)
+			{
+				switchScene(5);
+			}
+			else if (testFrames >= 120)
 			{
 				std::cout << "All scenes rendered successfully without errors." << std::endl;
 				running = false;
@@ -211,6 +221,7 @@ int main(int argc, char* argv[])
 						else if (event.key.scancode == SDL_SCANCODE_3) targetScene = 2;
 						else if (event.key.scancode == SDL_SCANCODE_4) targetScene = 3;
 						else if (event.key.scancode == SDL_SCANCODE_5) targetScene = 4;
+						else if (event.key.scancode == SDL_SCANCODE_6) targetScene = 5;
 
 						if (targetScene >= 0)
 						{
@@ -378,14 +389,15 @@ int main(int argc, char* argv[])
 							"2. Primitives Showcase",
 							"3. Hybrid Mesh + SDF",
 							"4. 3D Texture Only",
-							"5. 3D Texture Room"
+							"5. 3D Texture Room",
+							"6. Sponza Atrium"
 						};
 						int selectedScene = currentSceneIndex;
 						if (ImGui::Combo("Scene", &selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
 						{
 							switchScene(selectedScene);
 						}
-						ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4, 5");
+						ImGui::TextDisabled("Shortcuts: Keys 1, 2, 3, 4, 5, 6");
 
 						ImGui::SeparatorText("3D SDF Volume Texture (Compute)");
 						if (ImGui::Checkbox("Enable 3D SDF Texture", &pipeline.getConfig().enableSdf3DTexture))
@@ -393,13 +405,136 @@ int main(int argc, char* argv[])
 							pipeline.resetAccumulation(true);
 						}
 
-						if (pipeline.getConfig().enableSdf3DTexture)
+						if (pipeline.getConfig().enableSdf3DTexture || pipeline.getConfig().enableSliceInspector)
 						{
 							bool needsRegen = false;
 
-							const char* bakeModes[] = { "Sphere (1.0m)", "Scene 2 Primitives", "Room with Window" };
-							if (ImGui::Combo("Bake Mode", &pipeline.getConfig().sdfBakeMode, bakeModes, IM_ARRAYSIZE(bakeModes)))
+							static std::vector<std::string> discoveredGltfAssets;
+							static bool assetsScanned = false;
+							auto scanGltfAssets = [&]() {
+								discoveredGltfAssets.clear();
+								std::error_code ec;
+								const std::filesystem::path rootPath(ASSETS_PATH);
+								if (std::filesystem::exists(rootPath, ec))
+								{
+									for (const auto& entry : std::filesystem::recursive_directory_iterator(rootPath, ec))
+									{
+										const auto ext = entry.path().extension();
+										if (entry.is_regular_file(ec) && (ext == ".gltf" || ext == ".glb"))
+										{
+											std::filesystem::path rel = std::filesystem::relative(entry.path(), rootPath, ec);
+											if (!ec)
+											{
+												discoveredGltfAssets.push_back("assets/" + rel.generic_string());
+											}
+										}
+									}
+									std::sort(discoveredGltfAssets.begin(), discoveredGltfAssets.end());
+								}
+								assetsScanned = true;
+							};
+
+							if (!assetsScanned)
 							{
+								scanGltfAssets();
+							}
+
+							if (!discoveredGltfAssets.empty())
+							{
+								int selectedAssetIdx = -1;
+								for (int i = 0; i < static_cast<int>(discoveredGltfAssets.size()); ++i)
+								{
+									if (discoveredGltfAssets[i] == pipeline.getConfig().sdfModelPath)
+									{
+										selectedAssetIdx = i;
+										break;
+									}
+								}
+								const char* previewLabel = (selectedAssetIdx >= 0)
+									? discoveredGltfAssets[selectedAssetIdx].c_str()
+									: "<Custom Path>";
+								if (ImGui::BeginCombo("Mesh Asset", previewLabel))
+								{
+									for (int i = 0; i < static_cast<int>(discoveredGltfAssets.size()); ++i)
+									{
+										const bool isSelected = (selectedAssetIdx == i);
+										if (ImGui::Selectable(discoveredGltfAssets[i].c_str(), isSelected))
+										{
+											pipeline.getConfig().sdfModelPath = discoveredGltfAssets[i];
+											needsRegen = true;
+										}
+										if (isSelected)
+										{
+											ImGui::SetItemDefaultFocus();
+										}
+									}
+									ImGui::EndCombo();
+								}
+							}
+
+							static char modelPathBuffer[512] = {};
+							static std::string lastSyncedModelPath;
+							if (lastSyncedModelPath != pipeline.getConfig().sdfModelPath)
+							{
+								lastSyncedModelPath = pipeline.getConfig().sdfModelPath;
+								const size_t copyLen = std::min(lastSyncedModelPath.size(), sizeof(modelPathBuffer) - 1);
+								std::copy_n(lastSyncedModelPath.data(), copyLen, modelPathBuffer);
+								modelPathBuffer[copyLen] = '\0';
+							}
+
+							if (ImGui::InputText("Mesh Path (.gltf/.glb)", modelPathBuffer, sizeof(modelPathBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
+							{
+								pipeline.getConfig().sdfModelPath = modelPathBuffer;
+								lastSyncedModelPath = pipeline.getConfig().sdfModelPath;
+								needsRegen = true;
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Apply"))
+							{
+								pipeline.getConfig().sdfModelPath = modelPathBuffer;
+								lastSyncedModelPath = pipeline.getConfig().sdfModelPath;
+								needsRegen = true;
+							}
+
+							if (ImGui::Checkbox("Auto-Fit Mesh to Volume", &pipeline.getConfig().autoFitSdfMesh))
+							{
+								needsRegen = true;
+							}
+
+							const char* methodNames[] = {
+								"Exact Baseline (SSBO + Winding)",
+								"3D JFA (Triangle Shell)",
+								"3D JFA (6-View G-Buffer)",
+								"3D JFA (Live Camera G-Buffer)"
+							};
+							int methodIdx = static_cast<int>(pipeline.getConfig().sdfMethod);
+							if (ImGui::Combo("Generator Method", &methodIdx, methodNames, IM_ARRAYSIZE(methodNames)))
+							{
+								pipeline.getConfig().sdfMethod = static_cast<renderer::SdfMethod>(methodIdx);
+								if (pipeline.getConfig().sdfMethod == renderer::SdfMethod::JfaCameraGBuffer)
+								{
+									pipeline.getConfig().realtimeSdfUpdate = true;
+									pipeline.clearAccumulatedSdfSeeds();
+								}
+								needsRegen = true;
+							}
+
+							if (pipeline.getConfig().sdfMethod != renderer::SdfMethod::ExactBaseline)
+							{
+								const char* jfaVariants[] = { "Standard JFA", "JFA+1", "1+JFA" };
+								int variantIdx = static_cast<int>(pipeline.getConfig().jfaVariant);
+								if (ImGui::Combo("JFA Variant", &variantIdx, jfaVariants, IM_ARRAYSIZE(jfaVariants)))
+								{
+									pipeline.getConfig().jfaVariant = static_cast<renderer::JfaVariant>(variantIdx);
+									needsRegen = true;
+								}
+							}
+
+							const char* formatNames[] = { "GL_R32F (32-bit)", "GL_R16F (16-bit)" };
+							int formatIdx = static_cast<int>(pipeline.getConfig().sdfFormat);
+							if (ImGui::Combo("Volume Format", &formatIdx, formatNames, IM_ARRAYSIZE(formatNames)))
+							{
+								pipeline.getConfig().sdfFormat = static_cast<renderer::SdfFormat>(formatIdx);
 								needsRegen = true;
 							}
 
@@ -417,33 +552,84 @@ int main(int argc, char* argv[])
 								needsRegen = true;
 							}
 
-							if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 25.0f, "%.2f"))
+							if (ImGui::SliderFloat("World Size (m)", &pipeline.getConfig().sdfTextureWorldSize, 1.0f, 40.0f, "%.2f"))
 							{
 								needsRegen = true;
 							}
 
 							if (ImGui::DragFloat3("World Offset (m)", glm::value_ptr(pipeline.getConfig().sdfTextureOffset), 0.05f))
 							{
-								pipeline.resetAccumulation(true);
+								needsRegen = true;
 							}
 
-							if (ImGui::Button("Regenerate 3D SDF") || needsRegen)
+							ImGui::Checkbox("Real-Time Update (Every Frame)", &pipeline.getConfig().realtimeSdfUpdate);
+							if (pipeline.getConfig().sdfMethod == renderer::SdfMethod::JfaCameraGBuffer)
+							{
+								if (ImGui::Checkbox("Accumulate Camera G-Buffer Seeds", &pipeline.getConfig().accumulateCameraSdfSeeds))
+								{
+									pipeline.clearAccumulatedSdfSeeds();
+									needsRegen = true;
+								}
+								ImGui::SameLine();
+								if (ImGui::Button("Reset Seeds"))
+								{
+									pipeline.clearAccumulatedSdfSeeds();
+									needsRegen = true;
+								}
+							}
+
+							if (ImGui::Button("Generate 3D SDF") || needsRegen)
 							{
 								pipeline.generateSdf3DTexture();
 								pipeline.resetAccumulation(true);
 							}
+							ImGui::SameLine();
+							if (ImGui::Button("Run Reference Comparison (Exact R32F)"))
+							{
+								pipeline.runReferenceComparison();
+							}
 
-							if (pipeline.getConfig().sdfBakeMode == 0)
+							const auto& stats = pipeline.getLastSdfStats();
+							ImGui::SeparatorText("Mesh-to-SDF Metrics");
+							ImGui::Text("Triangles: %d | Grid: %d^3", stats.triangleCount, pipeline.getConfig().sdfTextureResolution);
+							ImGui::Text("GPU Total: %.2f ms (Seed %.2f | Flood %.2f | Fin %.2f)",
+								stats.totalGpuMs, stats.seedGpuMs, stats.floodGpuMs, stats.finalizeGpuMs);
+							ImGui::Text("VRAM: Static %.2f MB | Temp %.2f MB", stats.staticVramMb, stats.tempVramMb);
+							if (stats.hasReferenceComparison)
 							{
-								ImGui::TextDisabled("Bake Shape: 1.0m diameter sphere");
+								ImGui::Text("MAE: %.5f | RMSE: %.5f | Max: %.5f", stats.mae, stats.rmse, stats.maxError);
+								ImGui::Text("Sign Match: %.2f%%", stats.signMatchPercent);
 							}
-							else if (pipeline.getConfig().sdfBakeMode == 1)
+							else
 							{
-								ImGui::TextDisabled("Bake Shape: Scene 2 geometric primitives");
+								ImGui::TextDisabled("Error vs Exact R32F: Run Reference Comparison");
 							}
-							else if (pipeline.getConfig().sdfBakeMode == 2)
+						}
+
+						ImGui::SeparatorText("2D Orthogonal Slice Inspector");
+						if (ImGui::Checkbox("Enable 2D Slice Inspector", &pipeline.getConfig().enableSliceInspector))
+						{
+							if (pipeline.getConfig().enableSliceInspector
+								&& pipeline.getConfig().sliceViewMode == 1
+								&& !pipeline.getLastSdfStats().hasReferenceComparison)
 							{
-								ImGui::TextDisabled("Bake Shape: Closed room with subtract cube window");
+								pipeline.runReferenceComparison();
+							}
+						}
+
+						if (pipeline.getConfig().enableSliceInspector)
+						{
+							const char* sliceAxes[] = { "X Axis (YZ Plane)", "Y Axis (XZ Plane)", "Z Axis (XY Plane)" };
+							ImGui::Combo("Slice Axis", &pipeline.getConfig().sliceAxis, sliceAxes, IM_ARRAYSIZE(sliceAxes));
+							ImGui::SliderFloat("Slice Position", &pipeline.getConfig().slicePosition, 0.0f, 1.0f, "%.3f");
+
+							const char* sliceModes[] = { "SDF Isolines & Sign", "Absolute Error Heatmap |JFA - Ref|" };
+							if (ImGui::Combo("Slice View Mode", &pipeline.getConfig().sliceViewMode, sliceModes, IM_ARRAYSIZE(sliceModes)))
+							{
+								if (pipeline.getConfig().sliceViewMode == 1 && !pipeline.getLastSdfStats().hasReferenceComparison)
+								{
+									pipeline.runReferenceComparison();
+								}
 							}
 						}
 					}
@@ -904,7 +1090,7 @@ int main(int argc, char* argv[])
 			lastScreenshotPath = std::filesystem::absolute(filename).string();
 		}
 
-		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59 || testFrames == 79 || testFrames == 99))
+		if (isTestMode && (testFrames == 19 || testFrames == 39 || testFrames == 59 || testFrames == 79 || testFrames == 99 || testFrames == 119))
 		{
 			std::vector<unsigned char> pixels(windowWidth * windowHeight * 4);
 			glReadPixels(0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
@@ -914,8 +1100,11 @@ int main(int argc, char* argv[])
 				sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / (3.0 * 255.0);
 			}
 			double avg = sum / (windowWidth * windowHeight);
-			int scIdx = (testFrames == 19) ? 0 : ((testFrames == 39) ? 1 : ((testFrames == 59) ? 2 : ((testFrames == 79) ? 3 : 4)));
-			std::cout << "Scene " << (scIdx + 1) << " (" << scenes[scIdx].name << ") Average Brightness: " << avg << std::endl;
+			int scIdx = testFrames / 20;
+			if (scIdx >= 0 && scIdx < static_cast<int>(scenes.size()))
+			{
+				std::cout << "Scene " << (scIdx + 1) << " (" << scenes[scIdx].name << ") Average Brightness: " << avg << std::endl;
+			}
 
 			std::string ppmName = "scene" + std::to_string(scIdx + 1) + ".ppm";
 			std::ofstream ofs(ppmName, std::ios::binary);

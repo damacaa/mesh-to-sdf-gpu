@@ -41,6 +41,6 @@ void main()
 	out_worldPos = vec4(v_worldPos, 1.0);
 	float normLen = length(v_normal);
 	vec3 safeNormal = normLen > 0.001 ? v_normal / normLen : vec3(0.0, 1.0, 0.0);
-	out_normal = vec4(safeNormal, 0.0);
+	out_normal = vec4(safeNormal, v_color.b);
 	out_material = u_materialIndex;
 }

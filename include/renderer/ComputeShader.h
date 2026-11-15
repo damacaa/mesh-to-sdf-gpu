@@ -2,9 +2,11 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace renderer
 {
@@ -14,7 +16,7 @@ namespace renderer
 		GLuint id = 0;
 
 		ComputeShader() = default;
-		explicit ComputeShader(const std::string& computePath);
+		explicit ComputeShader(const std::string& computePath, const std::vector<std::string>& defines = {});
 		~ComputeShader();
 
 		ComputeShader(ComputeShader&& other) noexcept;
@@ -33,6 +35,7 @@ namespace renderer
 
 		void setUniform(const std::string& name, float value) const;
 		void setUniform(const std::string& name, int value) const;
+		void setUniform(const std::string& name, uint32_t value) const;
 		void setUniform(const std::string& name, const glm::ivec3& value) const;
 		void setUniform(const std::string& name, const glm::vec2& value) const;
 		void setUniform(const std::string& name, const glm::vec3& value) const;

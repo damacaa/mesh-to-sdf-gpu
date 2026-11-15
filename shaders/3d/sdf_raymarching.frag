@@ -332,14 +332,11 @@ float sample3DTextureSdf(vec3 p)
 	vec3 uvw = (q / u_sdfTextureWorldSize) + 0.5;
 	float texDist = texture(t_sdfTexture3D, clamp(uvw, 0.0, 1.0)).r;
 
-	if (all(greaterThanEqual(uvw, vec3(0.0))) && all(lessThanEqual(uvw, vec3(1.0))))
+	if (distToBox > 0.0)
 	{
-		return texDist;
+		return max(distToBox + 0.002, texDist - distToBox);
 	}
-	else
-	{
-		return distToBox + texDist;
-	}
+	return texDist;
 }
 
 vec3 sceneSdf(vec3 p)

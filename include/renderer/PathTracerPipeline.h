@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include "renderer/Camera.h"
-#include "renderer/ComputeShader.h"
+#include "renderer/SdfGenerator.h"
 #include "renderer/Framebuffer.h"
 #include "renderer/FullscreenQuad.h"
 #include "renderer/Light.h"
@@ -49,7 +49,19 @@ namespace renderer
 			float sdfTextureWorldSize = 2.0f;
 			glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
 			int sdfTextureMaterialId = 14;
-			int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives, 2 = Room with Window
+			SdfMethod sdfMethod = SdfMethod::ExactBaseline;
+			JfaVariant jfaVariant = JfaVariant::JfaPlus1;
+			SdfFormat sdfFormat = SdfFormat::R32F;
+			std::string sdfModelPath = "assets/monkey/demo.gltf";
+			bool autoFitSdfMesh = true;
+			bool realtimeSdfUpdate = false;
+			bool accumulateCameraSdfSeeds = true;
+
+			// 2D Orthogonal SDF Slice Inspector
+			bool enableSliceInspector = false;
+			int sliceAxis = 2; // 0 = X, 1 = Y, 2 = Z
+			float slicePosition = 0.5f;
+			int sliceViewMode = 0; // 0 = Isolines & Sign, 1 = Error Heatmap |JFA - Ref|
 
 			// Post-Processing Anti-Aliasing (FXAA)
 			bool enableFxaa = true;
@@ -72,8 +84,20 @@ namespace renderer
 		void setScene(const SceneDefinition& scene, int sceneIndex = 0);
 		void resetAccumulation(bool resetTemporal = false);
 		void generateSdf3DTexture(int sceneIndex);
-		void generateSdf3DTexture(int sceneIndex, int bakeMode, int resolution, float worldSize, const glm::vec3& worldOffset);
+		void generateSdf3DTexture(
+			int sceneIndex,
+			SdfMethod method,
+			JfaVariant jfaVariant,
+			SdfFormat format,
+			int resolution,
+			float worldSize,
+			const glm::vec3& worldOffset,
+			const std::string& modelPath,
+			bool autoFit);
 		void generateSdf3DTexture();
+		void clearAccumulatedSdfSeeds();
+		void runReferenceComparison();
+		const SdfStats& getLastSdfStats() const { return m_lastSdfStats; }
 		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth = 0, int displayHeight = 0);
@@ -103,11 +127,24 @@ namespace renderer
 		Shader m_resolveShader;
 		Shader m_fxaaShader;
 		Shader m_blitShader;
-		ComputeShader m_sdfComputeShader;
+		SdfGenerator m_sdfGenerator;
+		Model m_sdfModel;
+		std::string m_loadedSdfModelPath;
+		glm::mat4 m_lastCameraMatrix = glm::mat4(1.0f);
+		bool m_resetCameraSeedsRequested = false;
 
 		// 3D SDF volume textures per scene
 		std::vector<Texture3D> m_scene3DTextures;
 		int m_currentSceneIndex = 0;
+
+		// Reference SDF cache and metrics for live numerical comparison
+		Texture3D m_referenceSdfTexture;
+		int m_refResolution = 0;
+		float m_refWorldSize = 0.0f;
+		glm::vec3 m_refWorldOffset = glm::vec3(0.0f);
+		std::string m_refModelPath;
+		bool m_refAutoFit = true;
+		SdfStats m_lastSdfStats;
 
 		// STBN Spatiotemporal Blue Noise 3D textures
 		Texture3D m_stbnTexture0;

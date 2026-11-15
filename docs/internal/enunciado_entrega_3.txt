@@ -1,0 +1,18 @@
+En esta PEC seguiréis trabajando en vuestro proyecto de cara a su implementación final. Sin embargo, es necesario seguir con la redacción de la memoria. Concretamente, se os pide:
+
+Redacción prácticamente definitiva de los apartados 1-3, elaborados en las PECs anteriores, y de la Ficha del Trabajo en las páginas iniciales.
+Apartado 4, donde se explican ya todos los aspectos técnicos del trabajo tal y como se ha desarrollado durante estas semanas.
+Aparte, y siguiendo el formato de la PEC 2, habrá que poner al alcance del tutor un ejecutable (eg zip/exe o instalable apk) donde se pueda probar una versión alpha del videojuego, y un breve vídeo detallando el funcionamiento del juego, con una duración máxima de dos minutos. El enlace a ambos recursos debe estar contenido en el apartado de resumen de la ficha del Trabajo de la memoria.
+
+Sobre la descripción del juego (apartado de diseño)
+A continuación le planteamos algunos aspectos que son relevantes de plantearse a la hora de describir en profundidad su trabajo:
+
+Qué entorno se ha elegido al final y porqué, haciendo énfasis en los aspectos más importantes que han justificado la decisión.
+Requisitos técnicos del entorno de desarrollo.
+Inventario y breve descripción de todas las herramientas utilizadas.
+Inventario y descripción de asientos y recursos en el juego. Debe quedar muy claro qué assets habéis generado vosotros y cuáles son reaprovechados, indicando cuál es el origen éstos últimos. En el caso de aquellos hechos por vosotros, podéis explicar un poco el proceso creativo y sus características técnicas.
+Esquema de la arquitectura del juego/componentes (se trata de un proyecto de software, al fin y al cabo).
+Si aplica, detallar el funcionamiento de la IA de los enemigos.
+NO poner NINGÚN trozo de código en la memoria a menos que sean aspectos clave (por ejemplo, si se ha inventado un algoritmo nuevo, innovador). Hay que tener en cuenta siempre que la memoria no es una explicación o comentario sobre el código fuente del proyecto.
+Diseño de niveles. Poner un mapa del nivel y explicar los criterios de su diseño. Como si fuera una guía del juego sacada de una revista.
+En Biblioteca también podéis encontrar una guía sobre cómo trabajar con referencias bibliográficas en:

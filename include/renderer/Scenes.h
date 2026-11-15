@@ -1,5 +1,7 @@
 #pragma once
 
+#include "renderer/SdfGenerator.h"
+
 #include <string>
 #include <vector>
 #include "renderer/Material.h"
@@ -26,7 +28,13 @@ namespace renderer
 		float sdfTextureWorldSize = 2.0f;
 		glm::vec3 sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
 		int sdfTextureMaterialId = 14;
-		int sdfBakeMode = 0; // 0 = Sphere, 1 = Scene 2 Primitives, 2 = Room with Window
+		SdfMethod sdfMethod = SdfMethod::ExactBaseline;
+		JfaVariant jfaVariant = JfaVariant::JfaPlus1;
+		SdfFormat sdfFormat = SdfFormat::R32F;
+		std::string sdfModelPath = "assets/monkey/demo.gltf";
+		bool autoFitSdfMesh = true;
+		bool realtimeSdfUpdate = false;
+		bool accumulateCameraSdfSeeds = true;
 	};
 
 	inline std::vector<SceneDefinition> getPredefinedScenes()
@@ -138,10 +146,14 @@ namespace renderer
 
 			cornell.enableSdf3DTexture = true;
 			cornell.sdfTextureResolution = 64;
-			cornell.sdfTextureWorldSize = 2.0f;
-			cornell.sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+			cornell.sdfTextureWorldSize = 1.4f;
+			cornell.sdfTextureOffset = glm::vec3(0.0f, 0.8f, 0.0f);
 			cornell.sdfTextureMaterialId = 14;
-			cornell.sdfBakeMode = 0;
+			cornell.sdfMethod = SdfMethod::ExactBaseline;
+			cornell.jfaVariant = JfaVariant::JfaPlus1;
+			cornell.sdfFormat = SdfFormat::R32F;
+			cornell.sdfModelPath = "assets/monkey/demo.gltf";
+			cornell.autoFitSdfMesh = true;
 
 			scenes.push_back(cornell);
 		}
@@ -161,7 +173,11 @@ namespace renderer
 			primitives.sdfTextureWorldSize = 10.0f;
 			primitives.sdfTextureOffset = glm::vec3(0.0f, 2.5f, -1.0f);
 			primitives.sdfTextureMaterialId = 14;
-			primitives.sdfBakeMode = 1;
+			primitives.sdfMethod = SdfMethod::ExactBaseline;
+			primitives.jfaVariant = JfaVariant::JfaPlus1;
+			primitives.sdfFormat = SdfFormat::R32F;
+			primitives.sdfModelPath = "assets/monkey/demo.gltf";
+			primitives.autoFitSdfMesh = true;
 
 			primitives.glslShapesCode = R"(
 				// Checkered ground plane
@@ -360,10 +376,14 @@ namespace renderer
 
 			hybrid.enableSdf3DTexture = true;
 			hybrid.sdfTextureResolution = 64;
-			hybrid.sdfTextureWorldSize = 2.0f;
-			hybrid.sdfTextureOffset = glm::vec3(0.0f, 0.5f, 0.0f);
+			hybrid.sdfTextureWorldSize = 1.4f;
+			hybrid.sdfTextureOffset = glm::vec3(0.0f, 0.8f, 0.0f);
 			hybrid.sdfTextureMaterialId = 14;
-			hybrid.sdfBakeMode = 0;
+			hybrid.sdfMethod = SdfMethod::JfaVoxelShell;
+			hybrid.jfaVariant = JfaVariant::JfaPlus1;
+			hybrid.sdfFormat = SdfFormat::R32F;
+			hybrid.sdfModelPath = "assets/monkey/demo.gltf";
+			hybrid.autoFitSdfMesh = true;
 
 			scenes.push_back(hybrid);
 		}
@@ -385,10 +405,14 @@ namespace renderer
 
 			textureOnly.enableSdf3DTexture = true;
 			textureOnly.sdfTextureResolution = 128;
-			textureOnly.sdfTextureWorldSize = 10.0f;
-			textureOnly.sdfTextureOffset = glm::vec3(0.0f, 2.5f, -1.0f);
+			textureOnly.sdfTextureWorldSize = 4.0f;
+			textureOnly.sdfTextureOffset = glm::vec3(0.0f, 2.0f, -1.0f);
 			textureOnly.sdfTextureMaterialId = 14;
-			textureOnly.sdfBakeMode = 1; // Scene 2 geometric primitives copy
+			textureOnly.sdfMethod = SdfMethod::JfaVoxelShell;
+			textureOnly.jfaVariant = JfaVariant::JfaPlus1;
+			textureOnly.sdfFormat = SdfFormat::R32F;
+			textureOnly.sdfModelPath = "assets/monkey/demo.gltf";
+			textureOnly.autoFitSdfMesh = true;
 
 			textureOnly.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -430,10 +454,14 @@ namespace renderer
 
 			roomScene.enableSdf3DTexture = true;
 			roomScene.sdfTextureResolution = 128;
-			roomScene.sdfTextureWorldSize = 6.0f;
-			roomScene.sdfTextureOffset = glm::vec3(0.0f, 2.0f, 0.0f);
+			roomScene.sdfTextureWorldSize = 2.5f;
+			roomScene.sdfTextureOffset = glm::vec3(0.0f, 1.5f, -1.5f);
 			roomScene.sdfTextureMaterialId = 14;
-			roomScene.sdfBakeMode = 2; // Closed room with subtract cube window
+			roomScene.sdfMethod = SdfMethod::JfaGBufferSplat;
+			roomScene.jfaVariant = JfaVariant::JfaPlus1;
+			roomScene.sdfFormat = SdfFormat::R32F;
+			roomScene.sdfModelPath = "assets/monkey/demo.gltf";
+			roomScene.autoFitSdfMesh = true;
 
 			roomScene.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -452,6 +480,56 @@ namespace renderer
 										.color = glm::vec4(1.0f, 0.95f, 0.85f, 2.5f)});
 
 			scenes.push_back(roomScene);
+		}
+
+		// -------------------------------------------------------------
+		// Scene 6: Sponza Atrium (3D SDF Mesh Volume)
+		// -------------------------------------------------------------
+		{
+			SceneDefinition sponza;
+			sponza.name = "Sponza Atrium";
+			sponza.cameraPosition = glm::vec3(-5.0f, 2.3f, 0.0f);
+			sponza.cameraYaw = 0.0f;
+			sponza.cameraPitch = 4.0f;
+			sponza.renderMonkeyMesh = false;
+
+			sponza.glslShapesCode = R"(
+				// Empty analytic scene - Sponza is evaluated from the 3D SDF volume
+			)";
+
+			sponza.enableSdf3DTexture = true;
+			sponza.sdfTextureResolution = 128;
+			sponza.sdfTextureWorldSize = 30.0f;
+			sponza.sdfTextureOffset = glm::vec3(0.0f, 5.2f, 0.0f);
+			sponza.sdfTextureMaterialId = 14;
+			sponza.sdfMethod = SdfMethod::JfaVoxelShell;
+			sponza.jfaVariant = JfaVariant::JfaPlus1;
+			sponza.sdfFormat = SdfFormat::R32F;
+			sponza.sdfModelPath = "assets/sponza-gltf-pbr/sponza.glb";
+			sponza.autoFitSdfMesh = true;
+
+			sponza.materials.resize(16);
+			sponza.materials[0].name = "Default";
+			sponza.materials[0].color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+
+			sponza.materials[14].name = "Sponza Limestone";
+			sponza.materials[14].color = glm::vec4(0.86f, 0.82f, 0.75f, 1.0f);
+			sponza.materials[14].roughness = 0.8f;
+			sponza.materials[14].metallic = 0.0f;
+
+			// Overhead sun light that shines into the atrium courtyard
+			sponza.lights.push_back({.type = 0,
+									 .direction = glm::normalize(glm::vec3(0.25f, 0.90f, 0.20f)),
+									 .color = glm::vec4(1.0f, 0.95f, 0.85f, 2.5f)});
+			// Warm fill point lights along the main corridor
+			sponza.lights.push_back({.type = 1,
+									 .position = glm::vec3(-3.5f, 3.2f, 0.0f),
+									 .color = glm::vec4(1.0f, 0.85f, 0.65f, 1.8f)});
+			sponza.lights.push_back({.type = 1,
+									 .position = glm::vec3(3.5f, 3.2f, 0.0f),
+									 .color = glm::vec4(1.0f, 0.85f, 0.65f, 1.8f)});
+
+			scenes.push_back(sponza);
 		}
 
 		return scenes;

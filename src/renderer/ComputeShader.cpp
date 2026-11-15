@@ -20,12 +20,29 @@ namespace renderer
 		return buffer.str();
 	}
 
-	ComputeShader::ComputeShader(const std::string& computePath)
+	ComputeShader::ComputeShader(const std::string& computePath, const std::vector<std::string>& defines)
 		: m_computePath(computePath)
 	{
 		std::string rawSource = readFile(computePath);
 		if (!rawSource.empty())
 		{
+			if (!defines.empty())
+			{
+				size_t firstNewline = rawSource.find('\n');
+				std::string defineBlock;
+				for (const auto& def : defines)
+				{
+					defineBlock += "#define " + def + "\n";
+				}
+				if (firstNewline != std::string::npos)
+				{
+					rawSource.insert(firstNewline + 1, defineBlock);
+				}
+				else
+				{
+					rawSource = defineBlock + rawSource;
+				}
+			}
 			std::filesystem::path baseDir = std::filesystem::path(computePath).parent_path();
 			std::string processedSource = resolveIncludes(rawSource, baseDir);
 			compile(processedSource);
@@ -202,6 +219,15 @@ namespace renderer
 		if (loc != -1)
 		{
 			glUniform1i(loc, value);
+		}
+	}
+
+	void ComputeShader::setUniform(const std::string& name, uint32_t value) const
+	{
+		GLint loc = getUniformLocation(name);
+		if (loc != -1)
+		{
+			glUniform1ui(loc, value);
 		}
 	}
 

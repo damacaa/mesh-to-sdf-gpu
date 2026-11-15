@@ -53,6 +53,7 @@ set(SOURCES
     src/renderer/FullscreenQuad.cpp
     src/renderer/Model.cpp
     src/renderer/PathTracerPipeline.cpp
+    src/renderer/SdfGenerator.cpp
     src/renderer/Shader.cpp
     src/renderer/Texture.cpp
     src/renderer/Texture3D.cpp

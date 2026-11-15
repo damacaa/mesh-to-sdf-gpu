@@ -1,0 +1,124 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba32f, binding = 0) uniform writeonly image3D u_seedPosTex;
+layout(rgba32f, binding = 1) uniform writeonly image3D u_seedNormTex;
+layout(r32ui, binding = 2) uniform readonly uimage3D u_seedAtomics;
+layout(rgba32f, binding = 3) uniform coherent image3D u_persistentSeedPosTex;
+layout(rgba32f, binding = 4) uniform coherent image3D u_persistentSeedNormTex;
+
+#include "sdf_common.glsl"
+
+layout(std430, binding = 0) readonly buffer TriangleBuffer
+{
+	GpuTriangle triangles[];
+};
+
+uniform sampler2D t_gbufferWorldPos;
+uniform sampler2D t_gbufferNormal;
+
+uniform ivec3 u_resolution;
+uniform float u_worldSize;
+uniform vec3 u_worldOffset;
+uniform uint u_triangleCount;
+uniform int u_resolveMode; // 0 = Triangle SSBO, 1 = G-Buffer Atlas
+uniform ivec2 u_atlasSize;
+uniform int u_accumulateSeeds;
+
+void main()
+{
+	ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+	if (any(greaterThanEqual(coord, u_resolution)))
+	{
+		return;
+	}
+
+	vec3 voxelPos = voxelToWorld(coord, u_resolution, u_worldSize, u_worldOffset);
+	vec4 prevPos = vec4(0.0);
+	vec4 prevNorm = vec4(0.0);
+	if (u_accumulateSeeds == 1)
+	{
+		prevPos = imageLoad(u_persistentSeedPosTex, coord);
+		prevNorm = imageLoad(u_persistentSeedNormTex, coord);
+	}
+
+	uint packedSeed = imageLoad(u_seedAtomics, coord).r;
+	if (packedSeed == 0xFFFFFFFFu)
+	{
+		if (u_accumulateSeeds == 1 && prevPos.w > 0.5)
+		{
+			imageStore(u_seedPosTex, coord, prevPos);
+			imageStore(u_seedNormTex, coord, prevNorm);
+		}
+		return;
+	}
+
+	uint idx = packedSeed & 0xFFFFFu;
+	vec4 resolvedPos = vec4(0.0);
+	vec4 resolvedNorm = vec4(0.0);
+
+	if (u_resolveMode == 0)
+	{
+		if (idx >= u_triangleCount)
+		{
+			if (u_accumulateSeeds == 1 && prevPos.w > 0.5)
+			{
+				imageStore(u_seedPosTex, coord, prevPos);
+				imageStore(u_seedNormTex, coord, prevNorm);
+			}
+			return;
+		}
+
+		GpuTriangle tri = triangles[idx];
+		vec3 bary;
+		vec3 q = closestPointOnTriangle(voxelPos, tri.v0.xyz, tri.v1.xyz, tri.v2.xyz, bary);
+
+		vec3 interpN = bary.x * tri.n0.xyz + bary.y * tri.n1.xyz + bary.z * tri.n2.xyz;
+		float nLen = length(interpN);
+		if (nLen < 1e-6)
+		{
+			vec3 faceN = cross(tri.v1.xyz - tri.v0.xyz, tri.v2.xyz - tri.v0.xyz);
+			float faceLen = length(faceN);
+			interpN = (faceLen > 1e-6) ? (faceN / faceLen) : vec3(0.0, 1.0, 0.0);
+		}
+		else
+		{
+			interpN /= nLen;
+		}
+
+		resolvedPos = vec4(q, 1.0);
+		resolvedNorm = vec4(interpN, tri.n0.w);
+	}
+	else
+	{
+		ivec2 px = ivec2(int(idx) % u_atlasSize.x, int(idx) / u_atlasSize.x);
+		vec3 worldPos = texelFetch(t_gbufferWorldPos, px, 0).xyz;
+		vec4 rawNormalSample = texelFetch(t_gbufferNormal, px, 0);
+		vec3 rawNormal = rawNormalSample.xyz;
+		float nLen = length(rawNormal);
+		vec3 safeNormal = (nLen > 1e-6) ? (rawNormal / nLen) : vec3(0.0, 1.0, 0.0);
+
+		resolvedPos = vec4(worldPos, 1.0);
+		resolvedNorm = vec4(safeNormal, rawNormalSample.w);
+	}
+
+	if (u_accumulateSeeds == 1)
+	{
+		if (prevPos.w > 0.5)
+		{
+			vec3 prevDiff = prevPos.xyz - voxelPos;
+			vec3 currDiff = resolvedPos.xyz - voxelPos;
+			if (dot(prevDiff, prevDiff) < dot(currDiff, currDiff))
+			{
+				resolvedPos = prevPos;
+				resolvedNorm = prevNorm;
+			}
+		}
+		imageStore(u_persistentSeedPosTex, coord, resolvedPos);
+		imageStore(u_persistentSeedNormTex, coord, resolvedNorm);
+	}
+
+	imageStore(u_seedPosTex, coord, resolvedPos);
+	imageStore(u_seedNormTex, coord, resolvedNorm);
+}

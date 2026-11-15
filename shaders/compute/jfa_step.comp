@@ -1,0 +1,60 @@
+#version 460 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba32f, binding = 0) uniform readonly image3D u_inSeedPos;
+layout(rgba32f, binding = 1) uniform readonly image3D u_inSeedNorm;
+layout(rgba32f, binding = 2) uniform writeonly image3D u_outSeedPos;
+layout(rgba32f, binding = 3) uniform writeonly image3D u_outSeedNorm;
+
+#include "sdf_common.glsl"
+
+uniform ivec3 u_resolution;
+uniform float u_worldSize;
+uniform vec3 u_worldOffset;
+uniform int u_stepSize;
+
+void main()
+{
+	ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+	if (any(greaterThanEqual(coord, u_resolution)))
+	{
+		return;
+	}
+
+	vec3 worldPos = voxelToWorld(coord, u_resolution, u_worldSize, u_worldOffset);
+	vec4 bestPos = vec4(0.0);
+	vec4 bestNorm = vec4(0.0);
+	float bestDistSq = 1e30;
+
+	for (int dz = -1; dz <= 1; ++dz)
+	{
+		for (int dy = -1; dy <= 1; ++dy)
+		{
+			for (int dx = -1; dx <= 1; ++dx)
+			{
+				ivec3 nCoord = coord + ivec3(dx, dy, dz) * u_stepSize;
+				if (any(lessThan(nCoord, ivec3(0))) || any(greaterThanEqual(nCoord, u_resolution)))
+				{
+					continue;
+				}
+
+				vec4 candPos = imageLoad(u_inSeedPos, nCoord);
+				if (candPos.w > 0.5)
+				{
+					vec3 diff = worldPos - candPos.xyz;
+					float dSq = dot(diff, diff);
+					if (dSq < bestDistSq)
+					{
+						bestDistSq = dSq;
+						bestPos = candPos;
+						bestNorm = imageLoad(u_inSeedNorm, nCoord);
+					}
+				}
+			}
+		}
+	}
+
+	imageStore(u_outSeedPos, coord, bestPos);
+	imageStore(u_outSeedNorm, coord, bestNorm);
+}

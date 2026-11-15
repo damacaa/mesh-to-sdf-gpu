@@ -336,6 +336,167 @@ void testStaticAccumulationConvergence()
     }
     std::cout << "PASS: static accumulation convergence and continuous sample generation past 64 frames\n";
 }
+
+void validateSdfVolumeVoxels(const renderer::Texture3D& tex)
+{
+    require(tex.id != 0, "Generated 3D SDF texture ID is invalid.");
+    const int w = tex.getWidth();
+    const int h = tex.getHeight();
+    const int d = tex.getDepth();
+    require(w == 32 && h == 32 && d == 32, "Generated 3D SDF texture dimensions do not match 32^3.");
+
+    const size_t voxelCount = static_cast<size_t>(w) * static_cast<size_t>(h) * static_cast<size_t>(d);
+    std::vector<float> voxels(voxelCount, 0.0f);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glBindTexture(GL_TEXTURE_3D, tex.id);
+    glGetTexImage(GL_TEXTURE_3D, 0, GL_RED, GL_FLOAT, voxels.data());
+    glBindTexture(GL_TEXTURE_3D, 0);
+    checkGl();
+
+    bool hasInterior = false;
+    bool hasExterior = false;
+    for (float v : voxels)
+    {
+        require(std::isfinite(v), "Generated 3D SDF volume contains non-finite values.");
+        if (v < 0.0f) hasInterior = true;
+        if (v > 0.0f) hasExterior = true;
+    }
+    require(hasInterior && hasExterior, "Generated 3D SDF volume lacks interior or exterior signs.");
+}
+
+void testMeshToSdfGenerator()
+{
+    renderer::Model model;
+    const std::string modelPath = std::string(ASSETS_PATH) + "/monkey/demo.gltf";
+    require(model.loadGLTF(modelPath), "Failed to load demo.gltf mesh for SDF test.");
+    require(model.isValid() && model.getTriangleCount() > 0, "Loaded glTF mesh has no valid triangles.");
+
+    renderer::SdfGenerator generator(SHADERS_PATH);
+
+    renderer::SdfGenerationParams baseParams;
+    baseParams.method = renderer::SdfMethod::ExactBaseline;
+    baseParams.jfaVariant = renderer::JfaVariant::Standard;
+    baseParams.format = renderer::SdfFormat::R32F;
+    baseParams.resolution = 32;
+    baseParams.worldSize = 2.0f;
+    baseParams.worldOffset = glm::vec3(0.0f);
+    baseParams.modelTransform = model.computeFitTransform(2.0f, glm::vec3(0.0f), 0.15f);
+
+    renderer::Texture3D refTex;
+    renderer::SdfStats refStats = generator.generate(model, baseParams, refTex);
+    require(refStats.triangleCount == static_cast<int>(model.getTriangleCount()),
+        "Triangle count mismatch in ExactBaseline stats.");
+    require(refStats.staticVramMb > 0.0f && refStats.totalGpuMs >= 0.0f,
+        "Invalid GPU metrics returned by ExactBaseline generator.");
+    validateSdfVolumeVoxels(refTex);
+
+    // Check GL_R16F quantization against GL_R32F reference.
+    {
+        renderer::SdfGenerationParams r16Params = baseParams;
+        r16Params.format = renderer::SdfFormat::R16F;
+        renderer::Texture3D r16Tex;
+        renderer::SdfStats stats = generator.generate(model, r16Params, r16Tex);
+        validateSdfVolumeVoxels(r16Tex);
+        generator.computeErrorMetrics(r16Tex, refTex, stats);
+        require(stats.hasReferenceComparison, "R16F reference comparison failed.");
+        require(stats.mae < 0.01f, "ExactBaseline R16F MAE exceeded threshold.");
+        require(stats.signMatchPercent > 99.5f, "ExactBaseline R16F sign agreement fell below 99.5%.");
+    }
+
+    // Check JfaVoxelShell across all JFA variants.
+    const std::array<renderer::JfaVariant, 3> variants = {
+        renderer::JfaVariant::Standard,
+        renderer::JfaVariant::JfaPlus1,
+        renderer::JfaVariant::OnePlusJfa
+    };
+    for (renderer::JfaVariant variant : variants)
+    {
+        renderer::SdfGenerationParams jfaParams = baseParams;
+        jfaParams.method = renderer::SdfMethod::JfaVoxelShell;
+        jfaParams.jfaVariant = variant;
+        renderer::Texture3D jfaTex;
+        renderer::SdfStats stats = generator.generate(model, jfaParams, jfaTex);
+        validateSdfVolumeVoxels(jfaTex);
+        generator.computeErrorMetrics(jfaTex, refTex, stats);
+        require(stats.hasReferenceComparison, "JfaVoxelShell reference comparison failed.");
+        require(stats.mae < 0.15f && stats.rmse < 0.25f, "JfaVoxelShell error exceeded threshold.");
+        require(stats.signMatchPercent > 85.0f, "JfaVoxelShell sign agreement fell below 85%.");
+    }
+
+    // Check JfaGBufferSplat with JfaPlus1.
+    {
+        renderer::SdfGenerationParams gbufParams = baseParams;
+        gbufParams.method = renderer::SdfMethod::JfaGBufferSplat;
+        gbufParams.jfaVariant = renderer::JfaVariant::JfaPlus1;
+        renderer::Texture3D gbufTex;
+        renderer::SdfStats stats = generator.generate(model, gbufParams, gbufTex);
+        validateSdfVolumeVoxels(gbufTex);
+        generator.computeErrorMetrics(gbufTex, refTex, stats);
+        require(stats.hasReferenceComparison, "JfaGBufferSplat reference comparison failed.");
+        require(stats.mae < 0.15f && stats.rmse < 0.25f, "JfaGBufferSplat error exceeded threshold.");
+        require(stats.signMatchPercent > 85.0f, "JfaGBufferSplat sign agreement fell below 85%.");
+    }
+
+    // Check binary GLB loading and voxelization on Sponza Atrium.
+    {
+        renderer::Model sponzaModel;
+        const std::string sponzaPath = std::string(ASSETS_PATH) + "/sponza-gltf-pbr/sponza.glb";
+        require(sponzaModel.loadGLTF(sponzaPath), "Failed to load sponza.glb mesh for SDF test.");
+        require(sponzaModel.isValid() && sponzaModel.getTriangleCount() > 200000,
+            "Loaded Sponza GLB mesh has fewer triangles than expected.");
+
+        renderer::SdfGenerationParams sponzaParams;
+        sponzaParams.method = renderer::SdfMethod::JfaVoxelShell;
+        sponzaParams.jfaVariant = renderer::JfaVariant::JfaPlus1;
+        sponzaParams.format = renderer::SdfFormat::R32F;
+        sponzaParams.resolution = 32;
+        sponzaParams.worldSize = 30.0f;
+        sponzaParams.worldOffset = glm::vec3(0.0f, 5.2f, 0.0f);
+        sponzaParams.modelTransform = sponzaModel.computeFitTransform(30.0f, sponzaParams.worldOffset, 0.15f);
+
+        renderer::Texture3D sponzaTex;
+        renderer::SdfStats sponzaStats = generator.generate(sponzaModel, sponzaParams, sponzaTex);
+        require(sponzaStats.triangleCount == static_cast<int>(sponzaModel.getTriangleCount()),
+            "Triangle count mismatch in Sponza stats.");
+        validateSdfVolumeVoxels(sponzaTex);
+    }
+
+    // Check JfaCameraGBuffer with temporal seed accumulation across two opposite camera views.
+    {
+        const glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 50.0f);
+        renderer::SdfGenerationParams camParams = baseParams;
+        camParams.method = renderer::SdfMethod::JfaCameraGBuffer;
+        camParams.jfaVariant = renderer::JfaVariant::JfaPlus1;
+        camParams.cameraViewportWidth = 512;
+        camParams.cameraViewportHeight = 512;
+        camParams.accumulateSeeds = true;
+        camParams.resetAccumulatedSeeds = true;
+        camParams.cameraViewProj = proj * glm::lookAt(
+            glm::vec3(0.0f, 0.0f, 3.0f),
+            glm::vec3(0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f));
+
+        renderer::Texture3D camTex;
+        renderer::SdfStats statsFront = generator.generate(model, camParams, camTex);
+        validateSdfVolumeVoxels(camTex);
+        generator.computeErrorMetrics(camTex, refTex, statsFront);
+        require(statsFront.hasReferenceComparison, "JfaCameraGBuffer front reference comparison failed.");
+
+        camParams.resetAccumulatedSeeds = false;
+        camParams.cameraViewProj = proj * glm::lookAt(
+            glm::vec3(0.0f, 0.0f, -3.0f),
+            glm::vec3(0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f));
+        renderer::SdfStats statsAccum = generator.generate(model, camParams, camTex);
+        validateSdfVolumeVoxels(camTex);
+        generator.computeErrorMetrics(camTex, refTex, statsAccum);
+        require(statsAccum.hasReferenceComparison, "JfaCameraGBuffer accumulated reference comparison failed.");
+        require(statsAccum.mae < statsFront.mae,
+            "Accumulating seeds from a second camera view did not reduce SDF MAE.");
+    }
+
+    std::cout << "PASS: mesh-to-SDF generator validation across Exact, JfaVoxelShell, JfaGBufferSplat, and JfaCameraGBuffer\n";
+}
 }
 
 int main()
@@ -360,6 +521,7 @@ int main()
         testVarianceFilter();
         testPipeline();
         testStaticAccumulationConvergence();
+        testMeshToSdfGenerator();
         checkGl();
     }
     catch (const std::exception& error)

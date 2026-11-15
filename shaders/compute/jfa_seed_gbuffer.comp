@@ -1,0 +1,53 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(r32ui, binding = 2) uniform uimage3D u_seedAtomics;
+
+uniform sampler2D t_gbufferWorldPos;
+uniform sampler2D t_gbufferDepth;
+
+#include "sdf_common.glsl"
+
+uniform ivec3 u_resolution;
+uniform float u_worldSize;
+uniform vec3 u_worldOffset;
+uniform ivec2 u_atlasSize;
+
+void main()
+{
+	ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+	if (any(greaterThanEqual(px, u_atlasSize)))
+	{
+		return;
+	}
+
+	float depthSample = texelFetch(t_gbufferDepth, px, 0).r;
+	vec4 posSample = texelFetch(t_gbufferWorldPos, px, 0);
+	if (depthSample >= 1.0 || posSample.w < 0.5)
+	{
+		return;
+	}
+
+	vec3 worldPos = posSample.xyz;
+	float voxelSize = u_worldSize / float(u_resolution.x);
+	vec3 gridOrigin = u_worldOffset - vec3(u_worldSize * 0.5);
+
+	ivec3 voxelCoord = ivec3(floor((worldPos - gridOrigin) / voxelSize));
+	if (any(lessThan(voxelCoord, ivec3(0))) || any(greaterThanEqual(voxelCoord, u_resolution)))
+	{
+		return;
+	}
+
+	vec3 voxelCenter = voxelToWorld(voxelCoord, u_resolution, u_worldSize, u_worldOffset);
+	float dist = length(worldPos - voxelCenter);
+	uint quantizedDist = uint(clamp(dist / (voxelSize * 2.0), 0.0, 1.0) * 4095.0);
+	uint pixelIndex = uint(px.y * u_atlasSize.x + px.x);
+	if (pixelIndex >= 0xFFFFFu)
+	{
+		return;
+	}
+
+	uint packedSeed = (quantizedDist << 20u) | (pixelIndex & 0xFFFFFu);
+	imageAtomicMin(u_seedAtomics, voxelCoord, packedSeed);
+}
