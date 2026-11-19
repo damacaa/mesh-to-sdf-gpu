@@ -684,6 +684,15 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 				{
 					if (ImGui::BeginChild("RenderTabScroll", ImVec2(0.0f, 0.0f)))
 					{
+						if (scenes[currentSceneIndex].animatedDynamicBox)
+						{
+							ImGui::SliderFloat("Box thickness (mm)", &pipeline.getConfig().boxThicknessMm,
+								0.1f, 100.0f, "%.1f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+							ImGui::Checkbox("Use fixed box pose", &pipeline.getConfig().fixedBoxPose);
+						}
+						ImGui::Checkbox("Show SDF volume corners", &pipeline.getConfig().showVolumeBounds);
+						if (ImGui::IsItemHovered())
+							ImGui::SetTooltip("Cyan marks the static volume. Pink marks the dynamic volume.");
 						ImGui::SeparatorText("Path Tracer Settings");
 						if (ImGui::SliderInt("Bounces", &pipeline.getConfig().rayBounces, 1, 8))
 						{

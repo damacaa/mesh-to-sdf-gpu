@@ -31,6 +31,9 @@ namespace renderer
 			float contrast = 1.15f;
 			bool enableAntialiasing = true;
 			bool geometryPreview = false;
+			bool showVolumeBounds = false;
+			float boxThicknessMm = 10.0f;
+			bool fixedBoxPose = false;
 			bool collectGpuTimings = false;
 
 			// SVGF Denoising Parameters
@@ -133,6 +136,16 @@ namespace renderer
 		std::string m_shadersRoot;
 		std::string m_assetsRoot;
 
+		void drawDynamicBox(const Camera& camera, double time);
+		void buildDynamicBoxField();
+		Shader m_dynamicBoxShader;
+		ComputeShader m_dynamicBoxSeed;
+		ComputeShader m_dynamicBoxDistance;
+		Texture3D m_dynamicBoxVolumes[2];
+		Shader m_boundsShader;
+		bool m_hasDynamicField = false;
+		void drawVolumeBounds();
+		GLuint m_dynamicBoxVao = 0;
 		Shader m_gbufferShader;
 		Shader m_sdfShader;
 		Shader m_temporalShader;
@@ -162,10 +175,11 @@ namespace renderer
 
 		struct FrameGpuQueries
 		{
-			enum Timestamp { RenderStart, TraceStart, TraceEnd, RenderEnd, Count };
+			enum Timestamp { RenderStart, DynamicBoxStart, DynamicBoxEnd, TraceStart, TraceEnd, RenderEnd, Count };
 			std::array<GLuint, Count> timestamps{};
 			float sdfBuildMs = 0.0f;
 			bool traced = false;
+			bool builtDynamicBox = false;
 		};
 		std::array<FrameGpuQueries, 8> m_gpuQueries{};
 		size_t m_nextGpuTimingResult = 0;

@@ -1,0 +1,21 @@
+#version 460 core
+#include "../common/dynamic_grid.glsl"
+layout(local_size_x=4, local_size_y=4, local_size_z=4) in;
+layout(binding=0,r32f) readonly uniform image3D source;
+layout(binding=1,r32f) writeonly uniform image3D target;
+uniform int u_axis;
+void main()
+{
+	ivec3 p = ivec3(gl_GlobalInvocationID);
+	ivec3 q = p;
+	int n = imageSize(source)[u_axis];
+	float best = 1e6;
+	for (int i=0; i<n; ++i)
+	{
+		q[u_axis] = i;
+		float delta = float(i - p[u_axis]);
+		best = min(best, imageLoad(source,q).r + delta * delta);
+	}
+	if (u_axis == 2) best = sqrt(best) * dynamicBoxSize / float(n);
+	imageStore(target,p,vec4(best));
+}

@@ -8,11 +8,29 @@
 
 namespace renderer
 {
+	namespace
+	{
+		const glm::vec3 dynamicBoxMin(-2.0f, 0.0f, -2.0f);
+		constexpr float dynamicBoxSize = 4.0f;
+
+		template<class Program>
+		void setDynamicBounds(const Program& shader)
+		{
+			shader.setUniform("dynamicBoxMin", dynamicBoxMin);
+			shader.setUniform("dynamicBoxSize", dynamicBoxSize);
+		}
+	}
+
 	PathTracerPipeline::PathTracerPipeline(const Config& config, const std::string& shadersRoot, const std::string& assetsRoot)
 		: m_config(config)
 		, m_shadersRoot(shadersRoot)
 		, m_assetsRoot(assetsRoot)
 	{
+		m_boundsShader = Shader(shadersRoot + "/3d/volume_bounds.vert", shadersRoot + "/3d/volume_bounds.frag");
+		m_dynamicBoxShader = Shader(shadersRoot + "/3d/stretching_box.vert", shadersRoot + "/3d/gbuffer.frag");
+		m_dynamicBoxSeed = ComputeShader(shadersRoot + "/compute/dynamic_seed.comp");
+		m_dynamicBoxDistance = ComputeShader(shadersRoot + "/compute/dynamic_distance.comp");
+		glGenVertexArrays(1, &m_dynamicBoxVao);
 		m_gbufferShader = Shader(shadersRoot + "/3d/geometry.vert", shadersRoot + "/3d/gbuffer.frag");
 		m_sdfShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/3d/sdf_raymarching.frag");
 		m_temporalShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_temporal.frag");
@@ -66,6 +84,8 @@ namespace renderer
 			tex.dispose();
 		}
 		m_scene3DTextures.clear();
+		glDeleteVertexArrays(1, &m_dynamicBoxVao);
+		m_dynamicBoxVao = 0;
 		m_referenceSdfTexture.dispose();
 		m_sdfGenerator.dispose();
 		m_stbnTexture0.dispose();
@@ -565,6 +585,12 @@ namespace renderer
 			FrameGpuTimings result;
 			result.sdfBuildMs = queries.sdfBuildMs;
 			result.renderMs = elapsedMs(FrameGpuQueries::RenderStart, FrameGpuQueries::RenderEnd);
+			if (queries.builtDynamicBox)
+			{
+				float dynamicBoxMs = elapsedMs(FrameGpuQueries::DynamicBoxStart, FrameGpuQueries::DynamicBoxEnd);
+				result.sdfBuildMs += dynamicBoxMs;
+				result.renderMs -= dynamicBoxMs;
+			}
 			if (queries.traced)
 			{
 				result.pathTraceMs = elapsedMs(FrameGpuQueries::TraceStart, FrameGpuQueries::TraceEnd);
@@ -586,9 +612,85 @@ namespace renderer
 		}
 		queries.sdfBuildMs = sdfBuildMs;
 		queries.traced = false;
+		queries.builtDynamicBox = false;
 		glQueryCounter(queries.timestamps[FrameGpuQueries::RenderStart], GL_TIMESTAMP);
 		++m_pendingGpuTimings;
 		return &queries;
+	}
+
+	void PathTracerPipeline::drawDynamicBox(const Camera& camera, double time)
+	{
+		// The architecture supplies depth for camera visibility.
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		glDisable(GL_CULL_FACE);
+		m_gbufferShader.use();
+		m_gbufferShader.setUniform("u_camMatrix", camera.cameraMatrix);
+		if (m_config.enableSdf3DTexture && m_sdfModel.isValid())
+		{
+			const auto transform = m_config.autoFitSdfMesh
+				? m_sdfModel.computeFitTransform(m_config.sdfTextureWorldSize, m_config.sdfTextureOffset, 0.15f)
+				: glm::translate(glm::mat4(1.0f), m_config.sdfTextureOffset);
+			m_sdfModel.draw(m_gbufferShader, transform, 0);
+		}
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		m_dynamicBoxShader.use();
+		m_dynamicBoxShader.setUniform("u_camMatrix", camera.cameraMatrix);
+		m_dynamicBoxShader.setUniform("u_time", m_config.fixedBoxPose ? 0.0f : static_cast<float>(time));
+		m_dynamicBoxShader.setUniform("u_thickness", 0.001f * m_config.boxThicknessMm);
+		m_dynamicBoxShader.setUniform("u_materialIndex", 15);
+		glBindVertexArray(m_dynamicBoxVao);
+		glDrawArrays(GL_TRIANGLES, 0, 6 * 6);
+		glBindVertexArray(0);
+		glEnable(GL_CULL_FACE);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	}
+
+	void PathTracerPipeline::drawVolumeBounds()
+	{
+		if (!m_config.showVolumeBounds) return;
+		m_boundsShader.use();
+		m_boundsShader.setUniform("u_viewProjection", m_lastCameraMatrix);
+		glBindVertexArray(m_dynamicBoxVao);
+		auto draw = [&](const glm::vec3& minimum, float size, const glm::vec3& color) {
+			m_boundsShader.setUniform("u_minimum", minimum);
+			m_boundsShader.setUniform("u_size", size);
+			m_boundsShader.setUniform("u_color", color);
+			glDrawArrays(GL_LINES, 0, 8 * 3 * 2);
+		};
+		if (m_config.enableSdf3DTexture)
+			draw(m_config.sdfTextureOffset - 0.5f * m_config.sdfTextureWorldSize,
+				m_config.sdfTextureWorldSize, glm::vec3(0, 0.85f, 1));
+		if (m_hasDynamicField)
+			draw(dynamicBoxMin, dynamicBoxSize, glm::vec3(1, 0.35f, 0.85f));
+		glBindVertexArray(0);
+	}
+
+	void PathTracerPipeline::buildDynamicBoxField()
+	{
+		constexpr int resolution = 48;
+		if (!m_dynamicBoxVolumes[0].id)
+			for (auto& volume : m_dynamicBoxVolumes)
+				volume.allocate(resolution, resolution, resolution);
+		float empty = 1e6f;
+		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+		glClearTexImage(m_dynamicBoxVolumes[0].id, 0, GL_RED, GL_FLOAT, &empty);
+		m_dynamicBoxSeed.use();
+		setDynamicBounds(m_dynamicBoxSeed);
+		m_gbufferWorldPos.bind(0);
+		glBindImageTexture(0, m_dynamicBoxVolumes[0].id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
+		m_dynamicBoxSeed.dispatch((m_config.renderWidth + 7) / 8, (m_config.renderHeight + 7) / 8, 1);
+		m_dynamicBoxSeed.memoryBarrier();
+		m_dynamicBoxDistance.use();
+		setDynamicBounds(m_dynamicBoxDistance);
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			m_dynamicBoxVolumes[axis % 2].bindImage(0, GL_READ_ONLY);
+			m_dynamicBoxVolumes[1 - axis % 2].bindImage(1, GL_WRITE_ONLY);
+			m_dynamicBoxDistance.setUniform("u_axis", axis);
+			m_dynamicBoxDistance.dispatch(resolution / 4, resolution / 4, resolution / 4);
+			m_dynamicBoxDistance.memoryBarrier();
+		}
 	}
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth, int displayHeight)
@@ -674,6 +776,21 @@ namespace renderer
 		// -------------------------------------------------------------
 		// 2. Primary Path Tracing Pass
 		// -------------------------------------------------------------
+		m_hasDynamicField = scene.animatedDynamicBox;
+		if (m_hasDynamicField)
+		{
+			drawDynamicBox(camera, time);
+			if (queries)
+			{
+				queries->builtDynamicBox = true;
+				glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicBoxStart], GL_TIMESTAMP);
+			}
+			buildDynamicBoxField();
+			if (queries)
+				glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicBoxEnd], GL_TIMESTAMP);
+			m_frameCounter = 0;
+			m_historyValid = false;
+		}
 		bool shouldRaymarch = usePrimary || (m_frameCounter < m_config.maxAccumulationFrames);
 
 		if (shouldRaymarch)
@@ -710,6 +827,12 @@ namespace renderer
 			m_sdfShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
 			m_sdfShader.setUniform("u_near", camera.nearPlane);
 			m_sdfShader.setUniform("u_far", camera.farPlane);
+			m_sdfShader.setUniform("u_hasDynamicBox", scene.animatedDynamicBox ? 1 : 0);
+			if (scene.animatedDynamicBox)
+			{
+				setDynamicBounds(m_sdfShader);
+				m_dynamicBoxVolumes[1].bind(10);
+			}
 			m_sdfShader.setUniform("u_frameCounter", m_frameCounter);
 			m_sdfShader.setUniform("u_rayBounces", m_config.rayBounces);
 			m_sdfShader.setUniform("u_contrast", m_config.contrast);
@@ -1029,6 +1152,7 @@ namespace renderer
 
 		glDisable(GL_DEPTH_TEST);
 		m_quad.draw();
+		drawVolumeBounds();
 		glEnable(GL_DEPTH_TEST);
 
 		// -------------------------------------------------------------
@@ -1172,6 +1296,7 @@ namespace renderer
 
 		glDisable(GL_DEPTH_TEST);
 		m_quad.draw();
+		drawVolumeBounds();
 		glEnable(GL_DEPTH_TEST);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

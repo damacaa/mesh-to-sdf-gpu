@@ -18,6 +18,7 @@ namespace renderer
 		float cameraPitch;
 		std::vector<Material3D> materials;
 		std::vector<Light3D> lights;
+		bool animatedDynamicBox = false;
 		bool renderMonkeyMesh = false;
 		glm::mat4 monkeyTransform = glm::mat4(1.0f);
 		int monkeyMaterialIndex = 0;
@@ -494,7 +495,7 @@ namespace renderer
 			sponza.cameraPosition = glm::vec3(-5.0f, 2.3f, 0.0f);
 			sponza.cameraYaw = 0.0f;
 			sponza.cameraPitch = 4.0f;
-			sponza.renderMonkeyMesh = false;
+			sponza.animatedDynamicBox = true;
 
 			sponza.glslShapesCode = R"(
 				// Empty analytic scene - Sponza is evaluated from the 3D SDF volume
@@ -516,6 +517,8 @@ namespace renderer
 			sponza.materials[0].name = "Default";
 			sponza.materials[0].color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
 
+			sponza.materials[15].name = "Stretching Box";
+			sponza.materials[15].color = glm::vec4(0.55f, 0.035f, 0.025f, 1.0f);
 			sponza.materials[14].name = "Sponza Limestone";
 			sponza.materials[14].color = glm::vec4(0.86f, 0.82f, 0.75f, 1.0f);
 			sponza.materials[14].roughness = 0.8f;

@@ -474,6 +474,31 @@ vec3 getFogColor(vec3 dir)
 	return getSkyColor(horizonDir);
 }
 
+#include "../common/dynamic_grid.glsl"
+layout(binding = 10) uniform sampler3D t_dynamicBox;
+uniform int u_hasDynamicBox;
+
+float dynamicBoxHit(vec3 origin, vec3 direction, float limit)
+{
+	vec3 safeDir = mix(direction, vec3(1e-8), lessThan(abs(direction), vec3(1e-8)));
+	vec3 a = (dynamicBoxMin - origin) / safeDir;
+	vec3 b = (dynamicBoxMin + dynamicBoxSize - origin) / safeDir;
+	vec3 entry = min(a, b), leave = max(a, b);
+	float t = max(0.0, max(entry.x, max(entry.y, entry.z)));
+	float end = min(limit, min(leave.x, min(leave.y, leave.z)));
+	float voxel = dynamicBoxSize / float(textureSize(t_dynamicBox, 0).x);
+	for (int i = 0; i < 192 && t <= end; ++i)
+	{
+		vec3 uvw = (origin + direction * t - dynamicBoxMin) / dynamicBoxSize;
+		float d = textureLod(t_dynamicBox, uvw, 0.0).r;
+		ivec3 size = textureSize(t_dynamicBox, 0);
+		ivec3 cell = clamp(ivec3(uvw * size), ivec3(0), size - 1);
+		if (d <= voxel || texelFetch(t_dynamicBox, cell, 0).r == 0.0) return t;
+		t += max(0.25 * voxel, d - 1.7321 * voxel);
+	}
+	return -1.0;
+}
+
 vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout uint state)
 {
 #ifdef GEOMETRY_PREVIEW
@@ -487,6 +512,7 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 	vec3 currentAlbedo = min(initialColor, vec3(1.0));
 
 	vec3 currentRd = rd;
+	vec3 surfaceNormal = firstN;
 	float roughness = u_materials[currentMatId].roughness;
 	float f0 = u_materials[currentMatId].metallic;
 
@@ -502,7 +528,7 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 												  : min(roughness + (float(bounce) * 0.1 / float(u_rayBounces)), 1.0);
 		fresnelPower = mix(50.0, 1.0, currentF0);
 
-		vec3 N = (bounce == 0) ? firstN : getNormal(p);
+		vec3 N = surfaceNormal;
 		vec3 rayOrigin = p + N * getSurfaceBias(p);
 		float startDistance = u_enableSdf3DTexture == 1 ? RAYMARCH_EPSILON : u_near;
 
@@ -584,7 +610,8 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 			RayHit shadowHit = rayMarch(rayOrigin, L, startDistance, min(lightDist, u_far), true);
 			if (!shadowHit.hit || shadowHit.dist >= lightDist)
 			{
-				directLighting += contribution;
+				if (u_hasDynamicBox == 0 || currentMatId == 15 || dynamicBoxHit(p + N * RAYMARCH_EPSILON, L, lightDist) < 0.0)
+					directLighting += contribution;
 			}
 		}
 
@@ -619,13 +646,22 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 
 		RayHit bounceHit = rayMarch(rayOrigin, bounceDir, startDistance, u_far, false);
 		float d = bounceHit.dist;
+		vec3 dynamicOrigin = p + N * RAYMARCH_EPSILON;
+		float dynamicT = -1.0;
+		if (u_hasDynamicBox != 0 && currentMatId != 15)
+		{
+			float limit = bounceHit.hit ? dot(rayOrigin + d * bounceDir - dynamicOrigin, bounceDir) : u_far;
+			dynamicT = dynamicBoxHit(dynamicOrigin, bounceDir, limit);
+		}
+		bool hitDynamic = dynamicT >= 0.0;
+		if (hitDynamic) d = dynamicT;
 
 		if (isSpecular)
 			throughput *= mix(vec3(1.0), currentAlbedo, currentF0);
 		else
 			throughput *= currentAlbedo;
 
-		bool bounceHitObstacle = bounceHit.hit && (d < u_far);
+		bool bounceHitObstacle = (hitDynamic || bounceHit.hit) && (d < u_far);
 
 		// Distance fog along the bounce ray
 		float bounceFogStart = u_far * 0.50;
@@ -652,7 +688,30 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 				break;
 			}
 
+			if (hitDynamic)
+			{
+				p = dynamicOrigin + d * bounceDir;
+				vec3 uvw = (p - dynamicBoxMin) / dynamicBoxSize;
+				vec3 h = 1.0 / vec3(textureSize(t_dynamicBox, 0));
+				vec3 gradient;
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					vec3 offset = vec3(0);
+					offset[axis] = h[axis];
+					gradient[axis] = textureLod(t_dynamicBox, uvw + offset, 0).r
+						- textureLod(t_dynamicBox, uvw - offset, 0).r;
+				}
+				surfaceNormal = dot(gradient, gradient) > 1e-8 ? normalize(gradient) : -bounceDir;
+				surfaceNormal = faceforward(surfaceNormal, bounceDir, surfaceNormal);
+				currentMatId = 15;
+				currentAlbedo = getMaterial(p, currentMatId);
+				roughness = u_materials[currentMatId].roughness;
+				f0 = u_materials[currentMatId].metallic;
+				finalColor += throughput * u_materials[currentMatId].emission * currentAlbedo;
+				continue;
+			}
 			p = rayOrigin + d * bounceDir;
+			surfaceNormal = getNormal(p);
 			vec3 preBounceScene = sceneSdf(p);
 			float bounceBlend = preBounceScene.z;
 			float bounceJitterMask = smoothstep(0.0, 0.5, bounceBlend);
@@ -663,6 +722,7 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 			int bounceMatId = clamp(int(bounceScene.y), 0, 15);
 			vec3 bounceMaterial = getMaterial(bounceMaterialPos, bounceMatId);
 
+			currentMatId = bounceMatId;
 			roughness = u_materials[bounceMatId].roughness;
 			f0 = u_materials[bounceMatId].metallic;
 
@@ -711,7 +771,7 @@ HitData render(in vec2 uv, inout uint state)
 	float z_n = (u_far + u_near - (2.0 * u_near * u_far) / z_e) / (u_far - u_near);
 	float sdfDepthNDC = sdfValid ? ((z_n + 1.0) * 0.5) : 1.0;
 
-	bool meshValid = (meshDepthSample < 1.0 - 0.0001);
+	bool meshValid = meshDepthSample < 1.0 - 0.0001 && texelFetch(t_gbufferWorldPos, pixelCoord, 0).w > 0.5;
 	bool meshInFront = meshValid && (!sdfValid || meshDepthLinear < minDepth);
 
 	// Atmospheric distance fog: keep foreground and midground clear, fade smoothly into horizon in the distance
