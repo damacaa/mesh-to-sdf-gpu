@@ -184,6 +184,7 @@ void testPipeline()
     config.renderHeight = height;
     config.enableBlueNoise = false;
     config.enableFxaa = false;
+    config.collectGpuTimings = true;
     config.historyFixFrames = 0; // Fresh temporal lighting must equal raw lighting.
     auto scenes = renderer::getPredefinedScenes();
     auto scene = scenes.front();
@@ -194,6 +195,33 @@ void testPipeline()
     camera.updateMatrix(width, height);
     renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
     pipeline.setScene(scene, 0);
+    capture(pipeline, camera, scene, 0.0);
+    glFinish();
+    capture(pipeline, camera, scene, 0.0);
+    const auto buildFrame = pipeline.getFrameGpuTimings();
+    require(buildFrame && buildFrame->sdfBuildMs > 0.0f, "The first frame must report the SDF build.");
+    require(buildFrame->pathTraceMs > 0.0f && buildFrame->pathTraceMs <= buildFrame->renderMs,
+        "The path tracing time must be part of the render time.");
+    glFinish();
+    capture(pipeline, camera, scene, 0.0);
+    const auto cachedFrame = pipeline.getFrameGpuTimings();
+    require(cachedFrame && cachedFrame->sdfBuildMs == 0.0f && cachedFrame->renderMs > 0.0f,
+        "A cached SDF must have zero build time.");
+    std::cout << "PASS: GPU frame timings for SDF builds and cached frames\n";
+
+    pipeline.getConfig().debugView = 4;
+    const auto litNormals = capture(pipeline, camera, scene, 0.0);
+    const auto litMask = pipeline.readSurfaceMask();
+    pipeline.getConfig().geometryPreview = true;
+    pipeline.getConfig().enableDenoising = false;
+    const auto previewNormals = capture(pipeline, camera, scene, 0.0);
+    require(previewNormals == litNormals && pipeline.readSurfaceMask() == litMask,
+        "The geometry preview changed the primary surface hits or normals.");
+    pipeline.getConfig().geometryPreview = false;
+    pipeline.getConfig().enableDenoising = true;
+    pipeline.getConfig().debugView = 0;
+    std::cout << "PASS: geometry preview preserves primary surface hits and normals\n";
+
     for (bool blue : {false, true})
     {
         pipeline.getConfig().enableBlueNoise = blue;
@@ -337,13 +365,13 @@ void testStaticAccumulationConvergence()
     std::cout << "PASS: static accumulation convergence and continuous sample generation past 64 frames\n";
 }
 
-void validateSdfVolumeVoxels(const renderer::Texture3D& tex)
+std::vector<float> readDistanceVoxels(const renderer::Texture3D& tex, int resolution)
 {
     require(tex.id != 0, "Generated 3D SDF texture ID is invalid.");
     const int w = tex.getWidth();
     const int h = tex.getHeight();
     const int d = tex.getDepth();
-    require(w == 32 && h == 32 && d == 32, "Generated 3D SDF texture dimensions do not match 32^3.");
+    require(w == resolution && h == resolution && d == resolution, "The distance volume has the wrong dimensions.");
 
     const size_t voxelCount = static_cast<size_t>(w) * static_cast<size_t>(h) * static_cast<size_t>(d);
     std::vector<float> voxels(voxelCount, 0.0f);
@@ -353,15 +381,18 @@ void validateSdfVolumeVoxels(const renderer::Texture3D& tex)
     glBindTexture(GL_TEXTURE_3D, 0);
     checkGl();
 
-    bool hasInterior = false;
-    bool hasExterior = false;
     for (float v : voxels)
     {
         require(std::isfinite(v), "Generated 3D SDF volume contains non-finite values.");
-        if (v < 0.0f) hasInterior = true;
-        if (v > 0.0f) hasExterior = true;
     }
-    require(hasInterior && hasExterior, "Generated 3D SDF volume lacks interior or exterior signs.");
+    return voxels;
+}
+
+void validateSdfVolumeVoxels(const renderer::Texture3D& tex)
+{
+    const auto voxels = readDistanceVoxels(tex, 32);
+    const auto [minDist, maxDist] = std::minmax_element(voxels.begin(), voxels.end());
+    require(*minDist < 0.0f && *maxDist > 0.0f, "Generated 3D SDF volume lacks interior or exterior signs.");
 }
 
 void testMeshToSdfGenerator()
@@ -437,7 +468,7 @@ void testMeshToSdfGenerator()
         require(stats.signMatchPercent > 85.0f, "JfaGBufferSplat sign agreement fell below 85%.");
     }
 
-    // Check binary GLB loading and voxelization on Sponza Atrium.
+    // Compare the distances in the Sponza seed band to the direct triangle distances.
     {
         renderer::Model sponzaModel;
         const std::string sponzaPath = std::string(ASSETS_PATH) + "/sponza-gltf-pbr/sponza.glb";
@@ -449,16 +480,40 @@ void testMeshToSdfGenerator()
         sponzaParams.method = renderer::SdfMethod::JfaVoxelShell;
         sponzaParams.jfaVariant = renderer::JfaVariant::JfaPlus1;
         sponzaParams.format = renderer::SdfFormat::R32F;
-        sponzaParams.resolution = 32;
+        sponzaParams.resolution = 16;
         sponzaParams.worldSize = 30.0f;
         sponzaParams.worldOffset = glm::vec3(0.0f, 5.2f, 0.0f);
         sponzaParams.modelTransform = sponzaModel.computeFitTransform(30.0f, sponzaParams.worldOffset, 0.15f);
+        sponzaParams.unsignedDistance = true;
 
         renderer::Texture3D sponzaTex;
         renderer::SdfStats sponzaStats = generator.generate(sponzaModel, sponzaParams, sponzaTex);
         require(sponzaStats.triangleCount == static_cast<int>(sponzaModel.getTriangleCount()),
             "Triangle count mismatch in Sponza stats.");
-        validateSdfVolumeVoxels(sponzaTex);
+        const auto distances = readDistanceVoxels(sponzaTex, sponzaParams.resolution);
+        sponzaParams.method = renderer::SdfMethod::ExactBaseline;
+        renderer::Texture3D sponzaRefTex;
+        generator.generate(sponzaModel, sponzaParams, sponzaRefTex);
+        const auto reference = readDistanceVoxels(sponzaRefTex, sponzaParams.resolution);
+
+        const float voxelSize = sponzaParams.worldSize / float(sponzaParams.resolution);
+        float maxNearError = 0.0f;
+        int nearCount = 0;
+        for (size_t i = 0; i < distances.size(); ++i)
+        {
+            require(distances[i] >= 0.0f && reference[i] >= 0.0f, "The unsigned distance volume has negative values.");
+            if (reference[i] < 1.74f * voxelSize)
+            {
+                ++nearCount;
+                maxNearError = std::max(maxNearError, std::abs(distances[i] - reference[i]));
+            }
+        }
+        require(nearCount > 0, "The Sponza reference volume has no samples in the seed band.");
+        require(maxNearError < 0.002f * voxelSize, "The Sponza seed band differs from the direct triangle distances.");
+        generator.computeErrorMetrics(sponzaTex, sponzaRefTex, sponzaStats);
+        require(sponzaStats.mae < 0.05f * voxelSize, "The Sponza unsigned distance error exceeded the limit.");
+        std::cout << "PASS: Sponza unsigned distance MAE " << sponzaStats.mae
+            << ", max seed band error " << maxNearError << '\n';
     }
 
     // Check JfaCameraGBuffer with temporal seed accumulation across two opposite camera views.

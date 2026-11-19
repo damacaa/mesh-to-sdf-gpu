@@ -26,6 +26,8 @@
 #define ASSETS_PATH "./assets"
 #endif
 
+static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, bool isTestMode);
+
 int main(int argc, char* argv[])
 {
 	bool isTestMode = (argc > 1 && std::string(argv[1]) == "--test");
@@ -42,8 +44,8 @@ int main(int argc, char* argv[])
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-	int windowWidth = 1920;
-	int windowHeight = 1080;
+	int windowWidth = isTestMode ? 1920 : 1280;
+	int windowHeight = isTestMode ? 1080 : 720;
 
 	SDL_Window* window = SDL_CreateWindow(
 		"TFM Path Tracer Prototype",
@@ -87,12 +89,26 @@ int main(int argc, char* argv[])
 	// Setup Dear ImGui
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	(void)io;
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplSDL3_InitForOpenGL(window, glContext);
 	ImGui_ImplOpenGL3_Init("#version 460");
+
+	runViewer(window, windowWidth, windowHeight, isTestMode);
+
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplSDL3_Shutdown();
+	ImGui::DestroyContext();
+
+	SDL_GL_DestroyContext(glContext);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+	return 0;
+}
+
+static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, bool isTestMode)
+{
+	ImGuiIO& io = ImGui::GetIO();
 
 	// Predefined scenes
 	auto scenes = renderer::getPredefinedScenes();
@@ -112,6 +128,7 @@ int main(int argc, char* argv[])
 	config.rayBounces = 3;
 	config.maxAccumulationFrames = 150;
 	config.contrast = 1.15f;
+	config.collectGpuTimings = !isTestMode;
 
 	renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
 	pipeline.setScene(scenes[currentSceneIndex], currentSceneIndex);
@@ -339,6 +356,23 @@ int main(int argc, char* argv[])
 
 			ImGui::PlotLines("##FPSGraph", fpsHistory, IM_ARRAYSIZE(fpsHistory), fpsOffset, nullptr, 0.0f, maxFpsVal, ImVec2(0.0f, 45.0f));
 
+			if (const auto& timing = pipeline.getFrameGpuTimings())
+			{
+				ImGui::Text("GPU frame (ms)  SDF build %.2f  |  Render %.2f", timing->sdfBuildMs, timing->renderMs);
+				ImGui::Text("Tracing pass %.2f ms within render", timing->pathTraceMs);
+				ImGui::TextDisabled("Last SDF build %.2f ms", pipeline.getLastSdfStats().totalGpuMs);
+			}
+			else
+			{
+				ImGui::TextDisabled("Waiting for GPU timings");
+			}
+
+			ImGui::Checkbox("Geometry Preview", &pipeline.getConfig().geometryPreview);
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::SetTooltip("Inspect the surfaces with camera lighting. Disable the preview for full lighting.");
+			}
+
 			ImGui::Checkbox("Limit FPS", &enableFpsLimit);
 			ImGui::SameLine();
 			if (!enableFpsLimit) ImGui::BeginDisabled(true);
@@ -501,6 +535,11 @@ int main(int argc, char* argv[])
 								needsRegen = true;
 							}
 
+							if (ImGui::Checkbox("Two-Sided Surface (Unsigned Distance)", &pipeline.getConfig().unsignedMeshDistance))
+							{
+								needsRegen = true;
+							}
+
 							const char* methodNames[] = {
 								"Exact Baseline (SSBO + Winding)",
 								"3D JFA (Triangle Shell)",
@@ -598,7 +637,10 @@ int main(int argc, char* argv[])
 							if (stats.hasReferenceComparison)
 							{
 								ImGui::Text("MAE: %.5f | RMSE: %.5f | Max: %.5f", stats.mae, stats.rmse, stats.maxError);
-								ImGui::Text("Sign Match: %.2f%%", stats.signMatchPercent);
+								if (!pipeline.getConfig().unsignedMeshDistance)
+								{
+									ImGui::Text("Sign Match: %.2f%%", stats.signMatchPercent);
+								}
 							}
 							else
 							{
@@ -623,7 +665,8 @@ int main(int argc, char* argv[])
 							ImGui::Combo("Slice Axis", &pipeline.getConfig().sliceAxis, sliceAxes, IM_ARRAYSIZE(sliceAxes));
 							ImGui::SliderFloat("Slice Position", &pipeline.getConfig().slicePosition, 0.0f, 1.0f, "%.3f");
 
-							const char* sliceModes[] = { "SDF Isolines & Sign", "Absolute Error Heatmap |JFA - Ref|" };
+							const char* isolines = pipeline.getConfig().unsignedMeshDistance ? "Distance Isolines" : "SDF Isolines & Sign";
+							const char* sliceModes[] = { isolines, "Absolute Error Heatmap |JFA - Ref|" };
 							if (ImGui::Combo("Slice View Mode", &pipeline.getConfig().sliceViewMode, sliceModes, IM_ARRAYSIZE(sliceModes)))
 							{
 								if (pipeline.getConfig().sliceViewMode == 1 && !pipeline.getLastSdfStats().hasReferenceComparison)
@@ -650,11 +693,6 @@ int main(int argc, char* argv[])
 						{
 							pipeline.resetAccumulation();
 						}
-						if (ImGui::Checkbox("Mesh Casts Shadows", &pipeline.getConfig().enableMeshShadows))
-						{
-							pipeline.resetAccumulation(true);
-						}
-
 						ImGui::SeparatorText("Denoising & Accumulation");
 						if (ImGui::Checkbox("Enable SVGF Denoiser", &pipeline.getConfig().enableDenoising))
 						{
@@ -1174,15 +1212,4 @@ int main(int argc, char* argv[])
 			smoothedIdleMs = 0.0f;
 		}
 	}
-
-	// Cleanup
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplSDL3_Shutdown();
-	ImGui::DestroyContext();
-
-	SDL_GL_DestroyContext(glContext);
-	SDL_DestroyWindow(window);
-	SDL_Quit();
-
-	return 0;
 }

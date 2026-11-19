@@ -14,7 +14,6 @@ uniform sampler2D t_gbufferAlbedo;      // GBuffer albedo
 uniform sampler2D t_gbufferWorldPos;    // GBuffer world position
 uniform sampler2D t_gbufferNormal;      // GBuffer world normal
 uniform isampler2D t_gbufferMaterial;   // GBuffer material index
-uniform sampler2D t_gbufferBackDepth;   // GBuffer back depth
 uniform sampler3D t_sdfTexture3D;       // 3D volumetric SDF texture
 
 // 3D SDF texture parameters
@@ -22,6 +21,8 @@ uniform int u_enableSdf3DTexture;
 uniform float u_sdfTextureWorldSize;
 uniform vec3 u_sdfTextureOffset;
 uniform int u_sdfTextureMaterialId;
+uniform int u_unsignedMeshDistance;
+uniform int u_approximateMeshDistance;
 
 // Spatiotemporal Blue Noise (STBN) textures
 uniform sampler3D t_stbn0;              // RGB: 3D vector, A: 1D scalar void-and-cluster
@@ -36,11 +37,9 @@ uniform int u_rayBounces;
 uniform float u_contrast;
 uniform int u_enableDenoising;
 uniform int u_demodulateAlbedo;
-uniform int u_enableMeshShadows;
 
 // Camera
 uniform mat4 u_camMatrix;
-uniform mat4 u_viewProjection;
 uniform float u_fov;
 uniform vec2 u_resolution;
 uniform float u_near;
@@ -236,89 +235,6 @@ float linearizeGBufferDepth(float d)
 	return (2.0 * u_near * u_far) / (u_far + u_near - z_n * (u_far - u_near));
 }
 
-// Projects a world-space point into GBuffer UV coordinates.
-vec2 worldToGBufferUV(vec3 worldPos, out bool valid)
-{
-	vec4 clipPos = u_viewProjection * vec4(worldPos, 1.0);
-
-	if (clipPos.w <= 0.0)
-	{
-		valid = false;
-		return vec2(0.0);
-	}
-
-	vec3 ndc = clipPos.xyz / clipPos.w;
-
-	const float MARGIN = 0.02;
-	if (abs(ndc.x) > 1.0 - MARGIN || abs(ndc.y) > 1.0 - MARGIN || ndc.z > 1.0 || ndc.z < -1.0)
-	{
-		valid = false;
-		return vec2(0.0);
-	}
-
-	valid = true;
-	return ndc.xy * 0.5 + 0.5;
-}
-
-// Approximate signed distance to the rasterized mesh surface.
-float meshSDF(vec3 p)
-{
-	bool valid;
-	vec2 uv = worldToGBufferUV(p, valid);
-
-	if (!valid)
-		return u_far;
-
-	float frontDepthRaw = texture(t_depthTexture, uv).r;
-	if (frontDepthRaw > 1.0 - 0.0001)
-		return u_far;
-
-	float backDepthRaw = texture(t_gbufferBackDepth, uv).r;
-
-	float frontDepthLinear = linearizeGBufferDepth(frontDepthRaw);
-	float backDepthLinear = linearizeGBufferDepth(backDepthRaw);
-
-	vec4 clipPos = u_viewProjection * vec4(p, 1.0);
-	float sampleDepthRaw = clipPos.z / clipPos.w * 0.5 + 0.5;
-	float sampleDepthLinear = linearizeGBufferDepth(sampleDepthRaw);
-
-	bool insideSlab = (sampleDepthLinear > frontDepthLinear) && (sampleDepthLinear < backDepthLinear);
-	const float SHADOW_BIAS = 0.05;
-
-	if (insideSlab)
-	{
-		vec3 meshWorldPos = texture(t_gbufferWorldPos, uv).rgb;
-		float distToFront = length(p - meshWorldPos);
-
-		if (distToFront < SHADOW_BIAS)
-		{
-			return SHADOW_BIAS - distToFront;
-		}
-
-		float zDistToBack = backDepthLinear - sampleDepthLinear;
-		if (zDistToBack < SHADOW_BIAS)
-		{
-			return SHADOW_BIAS - zDistToBack;
-		}
-
-		return 0.0;
-	}
-	else
-	{
-		if (sampleDepthLinear <= frontDepthLinear)
-		{
-			vec3 meshWorldPos = texture(t_gbufferWorldPos, uv).rgb;
-			float distToFront = length(p - meshWorldPos);
-			return min(distToFront + SHADOW_BIAS, 2.0);
-		}
-		else
-		{
-			float zDistToBack = sampleDepthLinear - backDepthLinear;
-			return min(zDistToBack * 0.5 + SHADOW_BIAS, 2.0);
-		}
-	}
-}
-
 // Injected shape helper functions or scene definitions
 #include "helper_functions"
 
@@ -331,6 +247,13 @@ float sample3DTextureSdf(vec3 p)
 
 	vec3 uvw = (q / u_sdfTextureWorldSize) + 0.5;
 	float texDist = texture(t_sdfTexture3D, clamp(uvw, 0.0, 1.0)).r;
+
+	if (u_unsignedMeshDistance == 1)
+	{
+		// Allow for the interpolation error at a surface between voxel centers.
+		float voxelSize = u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x);
+		texDist -= 0.9 * voxelSize;
+	}
 
 	if (distToBox > 0.0)
 	{
@@ -347,18 +270,6 @@ vec3 sceneSdf(vec3 p)
 
 	// Injected shape SDF code
 	#include "shapes"
-
-#ifdef MESH_SHADOW_SDF
-	if (u_enableMeshShadows == 1)
-	{
-		float mDist = meshSDF(p);
-		if (mDist < minDist)
-		{
-			minDist = mDist;
-			finalMaterialId = 15;
-		}
-	}
-#endif
 
 	if (u_enableSdf3DTexture == 1)
 	{
@@ -411,49 +322,83 @@ struct RayHit
 	bool hit;
 };
 
-RayHit rayMarch(vec3 ro, vec3 rd)
+RayHit rayMarch(vec3 ro, vec3 rd, float startDistance, float maxDistance, bool occlusionOnly)
 {
-	float hit = 1.0;
-	float traveled = u_near;
-	bool hasHit = false;
+	bool useVolume = u_enableSdf3DTexture == 1;
+	float voxelSize = useVolume ? u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x) : 0.0;
+	float traveled = startDistance;
+	float previousT = traveled;
+	float previousDist = 0.0;
+	int stepLimit = useVolume ? 2 * MAX_STEPS : MAX_STEPS;
 
-	for (int i = 0; i < MAX_STEPS; i++)
+	for (int i = 0; i < stepLimit && traveled <= maxDistance; ++i)
 	{
 		vec3 p = ro + (traveled * rd);
-		hit = sceneSdf(p).x;
+		vec3 surface = sceneSdf(p);
+		float distance = surface.x;
+		bool fromVolume = useVolume && int(surface.y) == u_sdfTextureMaterialId;
 
-		// Distance-adaptive precision: scale threshold with distance
-		float precis = max(RAYMARCH_EPSILON, traveled * 0.001);
-
-		if (abs(hit) < precis)
+		// Check crossings before a signed distance can move the ray backwards.
+		if ((useVolume || occlusionOnly) && i > 0 && (distance < 0.0) != (previousDist < 0.0))
 		{
-			hasHit = true;
-			break;
+			// A sign change between samples is enough to confirm occlusion.
+			if (occlusionOnly)
+				return RayHit(previousT, true);
+
+			float lo = previousT;
+			float hi = traveled;
+			for (int j = 0; j < 10; ++j)
+			{
+				float mid = (lo + hi) * 0.5;
+				float midDist = sceneSdf(ro + mid * rd).x;
+				if ((midDist < 0.0) == (previousDist < 0.0))
+					lo = mid;
+				else
+					hi = mid;
+			}
+			return RayHit((lo + hi) * 0.5, true);
 		}
 
-		if (traveled > u_far)
-			break;
+		float hitTolerance = max(RAYMARCH_EPSILON, traveled * 0.001);
+		if (fromVolume)
+		{
+			hitTolerance = min(hitTolerance, max(RAYMARCH_EPSILON, voxelSize * 0.05));
+		}
+		if (abs(distance) < hitTolerance)
+			return RayHit(traveled, true);
 
-		traveled += hit;
+		if (occlusionOnly && traveled == maxDistance)
+			return RayHit(traveled, false);
+
+		float advance = useVolume ? abs(distance) : distance;
+		if (fromVolume && u_approximateMeshDistance == 1)
+		{
+			vec3 q = abs(p - u_sdfTextureOffset);
+			if (all(lessThanEqual(q, vec3(u_sdfTextureWorldSize * 0.5))))
+			{
+				// Limit the advance where the grid can overestimate the distance.
+				advance = min(advance * 0.5, 2.0 * voxelSize);
+			}
+		}
+		previousT = traveled;
+		previousDist = distance;
+		traveled += advance;
+		if (occlusionOnly)
+			traveled = min(traveled, maxDistance);
 	}
 
-	// Also treat rays that reached near the surface before running out of steps as hits
-	if (!hasHit && traveled <= u_far)
+	if (!useVolume && traveled <= maxDistance)
 	{
-		float fallbackPrecis = max(RAYMARCH_EPSILON, traveled * 0.002);
-		if (abs(hit) < fallbackPrecis)
-		{
-			hasHit = true;
-		}
+		float finalDistance = sceneSdf(ro + traveled * rd).x;
+		return RayHit(traveled, abs(finalDistance) < max(RAYMARCH_EPSILON, traveled * 0.002));
 	}
-
-	return RayHit(traveled, hasHit && (traveled <= u_far));
+	return RayHit(traveled, false);
 }
 
 vec3 get3DTextureNormal(vec3 p)
 {
 	float voxelSize = u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x);
-	vec3 e = vec3(voxelSize, 0.0, 0.0);
+	vec3 e = vec3(voxelSize * 0.5, 0.0, 0.0);
 	float dx = sample3DTextureSdf(p + e.xyz) - sample3DTextureSdf(p - e.xyz);
 	float dy = sample3DTextureSdf(p + e.yxz) - sample3DTextureSdf(p - e.yxz);
 	float dz = sample3DTextureSdf(p + e.yzx) - sample3DTextureSdf(p - e.yzx);
@@ -475,7 +420,7 @@ float getSurfaceBias(vec3 p)
 			float distToBox = length(max(q, vec3(0.0)));
 			if (distToBox <= voxelSize)
 			{
-				bias = max(bias, voxelSize * 0.75);
+				bias = max(bias, voxelSize * 0.125);
 			}
 		}
 	}
@@ -529,8 +474,13 @@ vec3 getFogColor(vec3 dir)
 	return getSkyColor(horizonDir);
 }
 
-vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout uint state)
+vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout uint state)
 {
+#ifdef GEOMETRY_PREVIEW
+	float facing = max(dot(firstN, -rd), 0.0);
+	float skyFill = firstN.y * 0.5 + 0.5;
+	return min(initialColor, vec3(1.0)) * (0.40 + 0.45 * facing + 0.15 * skyFill);
+#else
 	int currentMatId = clamp(materialId, 0, 15);
 
 	vec3 finalColor = max(initialColor - vec3(1.0), vec3(0.0)) + (u_materials[currentMatId].emission * initialColor);
@@ -553,18 +503,18 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		fresnelPower = mix(50.0, 1.0, currentF0);
 
 		vec3 N = (bounce == 0) ? firstN : getNormal(p);
-		float bias = getSurfaceBias(p);
+		vec3 rayOrigin = p + N * getSurfaceBias(p);
+		float startDistance = u_enableSdf3DTexture == 1 ? RAYMARCH_EPSILON : u_near;
 
-		float fresnel = currentF0 + ((1.0 - currentF0) * pow(clamp(1.0 - dot(-currentRd, N), 0.0, 1.0), fresnelPower));
-
-		if (bounce == u_rayBounces && bounce > 0)
-		{
-			fresnel = 0.0;
-		}
+		bool terminalBounce = bounce == u_rayBounces && bounce > 0;
+		float viewFresnel = currentF0 + (1.0 - currentF0)
+			* pow(clamp(1.0 - dot(-currentRd, N), 0.0, 1.0), fresnelPower);
 
 		int noiseDomain = bounce * NOISE_DOMAINS_PER_BOUNCE;
 		float randVal = sampleNoise1(noiseDomain, state);
-		bool isSpecular = randVal < fresnel;
+		// Reduce grazing reflections on rough surfaces.
+		float specularChance = mix(viewFresnel, currentF0, currentRoughness);
+		bool isSpecular = randVal < specularChance;
 
 		// Direct Lighting from all active lights
 		vec3 directLighting = vec3(0.0);
@@ -577,6 +527,8 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 			float attenuation = 1.0;
 
 			vec3 lightJitter = sampleNoise3(noiseDomain + 4 + i, state);
+			if (light.color.w == 0.0)
+				continue;
 
 			if (light.type == 0) // Directional
 			{
@@ -610,19 +562,29 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 				attenuation *= smoothstep(0.80, 0.95, spotEffect);
 			}
 
-			RayHit shadowHit = rayMarch(p + N * bias, L);
-			bool hitObstacle = shadowHit.hit && (shadowHit.dist < lightDist);
-
-			if (!hitObstacle)
+			float directFresnel = 0.0;
+			vec3 specular = vec3(0.0);
+			if (!terminalBounce)
 			{
-				vec3 diffuse = currentAlbedo * max(dot(N, L), 0.0) * (1.0 - fresnel);
 				vec3 hVec = L - currentRd;
 				float hLen = length(hVec);
 				vec3 H = hLen > 1e-4 ? hVec / hLen : N;
+				// Use the angle to the half vector for this light sample.
+				float viewHalfCos = clamp(dot(-currentRd, H), 0.0, 1.0);
+				directFresnel = currentF0 + (1.0 - currentF0) * pow(1.0 - viewHalfCos, fresnelPower);
 				float specPow = pow(max(dot(N, H), 0.0), specExponent);
-				vec3 specular = specMultiplier * specPow * fresnel;
+				specular = specMultiplier * specPow * directFresnel;
+			}
 
-				directLighting += (diffuse + specular) * attenuation * light.color.xyz * light.color.w;
+			vec3 diffuse = currentAlbedo * max(dot(N, L), 0.0) * (1.0 - directFresnel);
+			vec3 contribution = (diffuse + specular) * attenuation * light.color.xyz * light.color.w;
+			if (all(equal(contribution, vec3(0.0))))
+				continue;
+
+			RayHit shadowHit = rayMarch(rayOrigin, L, startDistance, min(lightDist, u_far), true);
+			if (!shadowHit.hit || shadowHit.dist >= lightDist)
+			{
+				directLighting += contribution;
 			}
 		}
 
@@ -655,7 +617,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 		vec3 bounceDir = isSpecular ? specularDir : diffuseDir;
 		currentRd = bounceDir;
 
-		RayHit bounceHit = rayMarch(p + N * bias, bounceDir);
+		RayHit bounceHit = rayMarch(rayOrigin, bounceDir, startDistance, u_far, false);
 		float d = bounceHit.dist;
 
 		if (isSpecular)
@@ -690,7 +652,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 				break;
 			}
 
-			p = p + N * bias + d * bounceDir;
+			p = rayOrigin + d * bounceDir;
 			vec3 preBounceScene = sceneSdf(p);
 			float bounceBlend = preBounceScene.z;
 			float bounceJitterMask = smoothstep(0.0, 0.5, bounceBlend);
@@ -712,6 +674,7 @@ vec3 pathTrace(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, 
 	}
 
 	return finalColor;
+#endif
 }
 
 struct HitData
@@ -735,7 +698,7 @@ HitData render(in vec2 uv, inout uint state)
 	float meshDepthSample = texelFetch(t_depthTexture, pixelCoord, 0).r;
 	float meshDepthLinear = linearizeGBufferDepth(meshDepthSample);
 
-	RayHit sdfHit = rayMarch(ro, rd);
+	RayHit sdfHit = rayMarch(ro, rd, u_near, u_far, false);
 	float object = sdfHit.dist;
 	bool sdfValid = sdfHit.hit && (object < u_far);
 
@@ -770,7 +733,7 @@ HitData render(in vec2 uv, inout uint state)
 		int materialId = texelFetch(t_gbufferMaterial, pixelCoord, 0).r;
 		meshAlbedo *= getMaterial(meshWorldPos, materialId);
 
-		vec3 col = pathTrace(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, state);
+		vec3 col = shadeSurface(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, state);
 
 		// Fog at mesh depth (Euclidean distance along ray)
 		float meshEuclideanDist = meshDepthLinear / absCosAngle;
@@ -801,7 +764,7 @@ HitData render(in vec2 uv, inout uint state)
 		vec3 baseColor = getMaterial(materialSamplePos, materialId);
 		vec3 norm = getNormal(p);
 
-		vec3 col = pathTrace(p, rd, baseColor, materialId, norm, state);
+		vec3 col = shadeSurface(p, rd, baseColor, materialId, norm, state);
 
 		// Fog at SDF depth (Euclidean distance along ray)
 		float fog = smoothstep(fogStart, fogEnd, object);

@@ -43,8 +43,13 @@ void main()
 	vec3 triMin = min(a, min(b, c));
 	vec3 triMax = max(a, max(b, c));
 
-	ivec3 rawMin = ivec3(floor((triMin - gridOrigin) / voxelSize)) - ivec3(1);
-	ivec3 rawMax = ivec3(floor((triMax - gridOrigin) / voxelSize)) + ivec3(1);
+	float shellRadius = voxelSize * 1.75;
+	float maxQuantDist = voxelSize * 2.0;
+	// Include every voxel center within the seed radius.
+	vec3 minCenter = (triMin - shellRadius - gridOrigin) / voxelSize - 0.5;
+	vec3 maxCenter = (triMax + shellRadius - gridOrigin) / voxelSize - 0.5;
+	ivec3 rawMin = ivec3(ceil(minCenter));
+	ivec3 rawMax = ivec3(floor(maxCenter));
 	if (any(lessThan(rawMax, ivec3(0))) || any(greaterThanEqual(rawMin, u_resolution)))
 	{
 		return;
@@ -52,9 +57,6 @@ void main()
 
 	ivec3 vMin = max(rawMin, ivec3(0));
 	ivec3 vMax = min(rawMax, u_resolution - ivec3(1));
-
-	float shellRadius = voxelSize * 1.75;
-	float maxQuantDist = voxelSize * 2.0;
 
 	for (int z = vMin.z; z <= vMax.z; ++z)
 	{

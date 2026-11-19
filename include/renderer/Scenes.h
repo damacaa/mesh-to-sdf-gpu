@@ -35,6 +35,7 @@ namespace renderer
 		bool autoFitSdfMesh = true;
 		bool realtimeSdfUpdate = false;
 		bool accumulateCameraSdfSeeds = true;
+		bool unsignedMeshDistance = false;
 	};
 
 	inline std::vector<SceneDefinition> getPredefinedScenes()
@@ -413,6 +414,7 @@ namespace renderer
 			textureOnly.sdfFormat = SdfFormat::R32F;
 			textureOnly.sdfModelPath = "assets/monkey/demo.gltf";
 			textureOnly.autoFitSdfMesh = true;
+			textureOnly.unsignedMeshDistance = true;
 
 			textureOnly.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -462,6 +464,7 @@ namespace renderer
 			roomScene.sdfFormat = SdfFormat::R32F;
 			roomScene.sdfModelPath = "assets/monkey/demo.gltf";
 			roomScene.autoFitSdfMesh = true;
+			roomScene.unsignedMeshDistance = true;
 
 			roomScene.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -507,6 +510,7 @@ namespace renderer
 			sponza.sdfFormat = SdfFormat::R32F;
 			sponza.sdfModelPath = "assets/sponza-gltf-pbr/sponza.glb";
 			sponza.autoFitSdfMesh = true;
+			sponza.unsignedMeshDistance = true;
 
 			sponza.materials.resize(16);
 			sponza.materials[0].name = "Default";

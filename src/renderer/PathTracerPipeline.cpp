@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 namespace renderer
 {
@@ -25,8 +26,6 @@ namespace renderer
 		{
 			m_sdfShader.addDefine("ANTIALIASING");
 		}
-		m_sdfShader.addDefine("MESH_SHADOW_SDF");
-
 		std::string monkeyPath = assetsRoot + "/monkey/demo.gltf";
 		if (std::filesystem::exists(monkeyPath))
 		{
@@ -55,6 +54,13 @@ namespace renderer
 
 	PathTracerPipeline::~PathTracerPipeline()
 	{
+		for (const auto& queries : m_gpuQueries)
+		{
+			if (queries.timestamps.front() != 0)
+			{
+				glDeleteQueries(FrameGpuQueries::Count, queries.timestamps.data());
+			}
+		}
 		for (auto& tex : m_scene3DTextures)
 		{
 			tex.dispose();
@@ -70,7 +76,6 @@ namespace renderer
 	void PathTracerPipeline::freeResources()
 	{
 		m_gbufferFbo.free();
-		m_backDepthFbo.free();
 		m_primaryFbo.free();
 		m_temporalFbo[0].free();
 		m_temporalFbo[1].free();
@@ -86,7 +91,6 @@ namespace renderer
 		m_gbufferNormal.dispose();
 		m_gbufferMaterial.dispose();
 		m_depthTexture.dispose();
-		m_backDepthTexture.dispose();
 
 		m_primaryIllum.dispose();
 		m_primaryNormal.dispose();
@@ -134,12 +138,7 @@ namespace renderer
 		m_gbufferFbo.attachColorTexture(m_gbufferMaterial, 3);
 		m_gbufferFbo.attachDepthTexture(m_depthTexture);
 
-		// 2. Back-face depth target
-		m_backDepthTexture = Texture(width, height, Texture::TextureType::Depth);
-		m_backDepthFbo = Framebuffer();
-		m_backDepthFbo.attachDepthTexture(m_backDepthTexture);
-
-		// 3. Primary 1-SPP MRT Framebuffer
+		// 2. Primary 1-SPP MRT Framebuffer
 		m_primaryIllum = Texture(width, height, Texture::TextureType::LinearData);
 		m_primaryNormal = Texture(width, height, Texture::TextureType::LinearData);
 		m_primaryWorldPos = Texture(width, height, Texture::TextureType::LinearData);
@@ -153,7 +152,7 @@ namespace renderer
 		m_primaryFbo.attachColorTexture(m_primaryAlbedo, 3);
 		m_primaryFbo.attachDepthTexture(m_primaryDepth);
 
-		// 4. Temporal accumulation ping-pong buffers
+		// 3. Temporal accumulation ping-pong buffers
 		for (int i = 0; i < 2; ++i)
 		{
 			m_temporalIllum[i] = Texture(width, height, Texture::TextureType::LinearData);
@@ -171,7 +170,7 @@ namespace renderer
 		m_filteredHistory = Texture(width, height, Texture::TextureType::LinearData);
 		m_historyValid = false;
 
-		// 5. À-Trous Wavelet filter ping-pong buffers
+		// 4. À-Trous Wavelet filter ping-pong buffers
 		m_atrousPingTexture = Texture(width, height, Texture::TextureType::LinearData);
 		m_atrousPongTexture = Texture(width, height, Texture::TextureType::LinearData);
 
@@ -181,7 +180,7 @@ namespace renderer
 		m_atrousPongFbo = Framebuffer();
 		m_atrousPongFbo.attachColorTexture(m_atrousPongTexture, 0);
 
-		// 6. Legacy accumulation ping-pong buffers (RGBA32F)
+		// 5. Legacy accumulation ping-pong buffers (RGBA32F)
 		m_accumTexture[0] = Texture(width, height, Texture::TextureType::AccumulationData);
 		m_accumTexture[1] = Texture(width, height, Texture::TextureType::AccumulationData);
 
@@ -242,6 +241,7 @@ namespace renderer
 		m_config.autoFitSdfMesh = scene.autoFitSdfMesh;
 		m_config.realtimeSdfUpdate = scene.realtimeSdfUpdate;
 		m_config.accumulateCameraSdfSeeds = scene.accumulateCameraSdfSeeds;
+		m_config.unsignedMeshDistance = scene.unsignedMeshDistance;
 
 		Camera sceneCam(scene.cameraPosition);
 		sceneCam.yaw = scene.cameraYaw;
@@ -261,7 +261,8 @@ namespace renderer
 				|| m_refWorldSize != m_config.sdfTextureWorldSize
 				|| m_refWorldOffset != m_config.sdfTextureOffset
 				|| m_refModelPath != m_config.sdfModelPath
-				|| m_refAutoFit != m_config.autoFitSdfMesh);
+				|| m_refAutoFit != m_config.autoFitSdfMesh
+				|| m_refUnsignedDistance != m_config.unsignedMeshDistance);
 		if (refMismatch)
 		{
 			m_referenceSdfTexture.dispose();
@@ -269,18 +270,13 @@ namespace renderer
 			m_lastSdfStats.hasReferenceComparison = false;
 		}
 
-		if (m_config.enableSdf3DTexture && m_scene3DTextures[m_currentSceneIndex].id == 0)
+		if (m_config.enableSdf3DTexture)
 		{
-			generateSdf3DTexture(
-				m_currentSceneIndex,
-				m_config.sdfMethod,
-				m_config.jfaVariant,
-				m_config.sdfFormat,
-				m_config.sdfTextureResolution,
-				m_config.sdfTextureWorldSize,
-				m_config.sdfTextureOffset,
-				m_config.sdfModelPath,
-				m_config.autoFitSdfMesh);
+			generateSdf3DTexture(m_currentSceneIndex);
+		}
+		else
+		{
+			m_scene3DTextures[m_currentSceneIndex].dispose();
 		}
 
 		m_sdfShader.setFragmentIncludeCode("shapes", scene.glslShapesCode, true);
@@ -333,7 +329,8 @@ namespace renderer
 
 	std::vector<unsigned char> PathTracerPipeline::readSurfaceMask() const
 	{
-		if (!m_historyValid) throw std::logic_error("Render a frame before reading its surface mask.");
+		if (!m_historyValid && !(m_geometryPreview && m_frameCounter > 0))
+			throw std::logic_error("Render a frame before reading its surface mask.");
 		std::vector<glm::vec4> normals(size_t(m_config.renderWidth) * m_config.renderHeight);
 		glGetTextureImage(m_primaryNormal.id, 0, GL_RGBA, GL_FLOAT,
 			static_cast<GLsizei>(normals.size() * sizeof(glm::vec4)), normals.data());
@@ -424,6 +421,7 @@ namespace renderer
 		params.cameraViewportHeight = static_cast<int>(m_config.renderHeight);
 		params.accumulateSeeds = m_config.accumulateCameraSdfSeeds;
 		params.resetAccumulatedSeeds = m_resetCameraSeedsRequested;
+		params.unsignedDistance = m_config.unsignedMeshDistance;
 		m_resetCameraSeedsRequested = false;
 		if (autoFit && m_sdfModel.isValid())
 		{
@@ -435,6 +433,10 @@ namespace renderer
 		}
 
 		m_lastSdfStats = m_sdfGenerator.generate(m_sdfModel, params, m_scene3DTextures[sceneIndex]);
+		if (m_config.collectGpuTimings)
+		{
+			m_pendingSdfBuildMs += m_lastSdfStats.totalGpuMs;
+		}
 
 		if (m_referenceSdfTexture.id != 0 && !m_config.realtimeSdfUpdate)
 		{
@@ -442,7 +444,8 @@ namespace renderer
 				&& m_refWorldSize == worldSize
 				&& m_refWorldOffset == worldOffset
 				&& m_refModelPath == resolvedPath
-				&& m_refAutoFit == autoFit);
+				&& m_refAutoFit == autoFit
+				&& m_refUnsignedDistance == params.unsignedDistance);
 			if (matchesRef)
 			{
 				m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[sceneIndex], m_referenceSdfTexture, m_lastSdfStats);
@@ -515,6 +518,7 @@ namespace renderer
 		refParams.resolution = res;
 		refParams.worldSize = m_config.sdfTextureWorldSize;
 		refParams.worldOffset = m_config.sdfTextureOffset;
+		refParams.unsignedDistance = m_config.unsignedMeshDistance;
 		if (m_config.autoFitSdfMesh && m_sdfModel.isValid())
 		{
 			refParams.modelTransform = m_sdfModel.computeFitTransform(m_config.sdfTextureWorldSize, m_config.sdfTextureOffset, 0.15f);
@@ -530,13 +534,78 @@ namespace renderer
 		m_refWorldOffset = m_config.sdfTextureOffset;
 		m_refModelPath = resolvedPath;
 		m_refAutoFit = m_config.autoFitSdfMesh;
+		m_refUnsignedDistance = refParams.unsignedDistance;
 
 		m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[m_currentSceneIndex], m_referenceSdfTexture, m_lastSdfStats);
+	}
+
+	PathTracerPipeline::FrameGpuQueries* PathTracerPipeline::beginFrameGpuTiming()
+	{
+		const float sdfBuildMs = std::exchange(m_pendingSdfBuildMs, 0.0f);
+
+		// Read completed frames in order. Leave pending queries on the GPU.
+		while (m_pendingGpuTimings > 0)
+		{
+			const auto& queries = m_gpuQueries[m_nextGpuTimingResult];
+			GLint ready = GL_FALSE;
+			glGetQueryObjectiv(queries.timestamps[FrameGpuQueries::RenderEnd], GL_QUERY_RESULT_AVAILABLE, &ready);
+			if (!ready)
+			{
+				break;
+			}
+
+			auto elapsedMs = [&](FrameGpuQueries::Timestamp start, FrameGpuQueries::Timestamp end) {
+				GLuint64 startNs = 0;
+				GLuint64 endNs = 0;
+				glGetQueryObjectui64v(queries.timestamps[start], GL_QUERY_RESULT, &startNs);
+				glGetQueryObjectui64v(queries.timestamps[end], GL_QUERY_RESULT, &endNs);
+				return static_cast<float>(endNs - startNs) / 1000000.0f;
+			};
+
+			FrameGpuTimings result;
+			result.sdfBuildMs = queries.sdfBuildMs;
+			result.renderMs = elapsedMs(FrameGpuQueries::RenderStart, FrameGpuQueries::RenderEnd);
+			if (queries.traced)
+			{
+				result.pathTraceMs = elapsedMs(FrameGpuQueries::TraceStart, FrameGpuQueries::TraceEnd);
+			}
+			m_frameGpuTimings = result;
+			m_nextGpuTimingResult = (m_nextGpuTimingResult + 1) % m_gpuQueries.size();
+			--m_pendingGpuTimings;
+		}
+
+		if (m_pendingGpuTimings == m_gpuQueries.size())
+		{
+			return nullptr;
+		}
+
+		auto& queries = m_gpuQueries[(m_nextGpuTimingResult + m_pendingGpuTimings) % m_gpuQueries.size()];
+		if (queries.timestamps.front() == 0)
+		{
+			glGenQueries(FrameGpuQueries::Count, queries.timestamps.data());
+		}
+		queries.sdfBuildMs = sdfBuildMs;
+		queries.traced = false;
+		glQueryCounter(queries.timestamps[FrameGpuQueries::RenderStart], GL_TIMESTAMP);
+		++m_pendingGpuTimings;
+		return &queries;
 	}
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth, int displayHeight)
 	{
 		m_noiseFrameCounter = (m_noiseFrameCounter + 1) & 63;
+
+		const bool geometryPreview = m_config.geometryPreview;
+		const bool usePrimary = geometryPreview || m_config.enableDenoising;
+		const bool demodulateAlbedo = m_config.demodulateAlbedo && !geometryPreview;
+		if (geometryPreview != m_geometryPreview)
+		{
+			if (geometryPreview)
+				m_sdfShader.addDefine("GEOMETRY_PREVIEW");
+			else
+				m_sdfShader.removeDefine("GEOMETRY_PREVIEW");
+			m_geometryPreview = geometryPreview;
+		}
 
 		// Detect shader changes before the current frame uses history.
 		bool shaderChanged = m_sdfShader.hasRecompiled();
@@ -554,6 +623,8 @@ namespace renderer
 		{
 			generateSdf3DTexture(m_currentSceneIndex);
 		}
+
+		auto* queries = m_config.collectGpuTimings ? beginFrameGpuTiming() : nullptr;
 
 		bool cameraMoved = (m_oldCameraView != camera.view || m_prevCameraMatrix != camera.cameraMatrix);
 		if (cameraMoved)
@@ -598,43 +669,17 @@ namespace renderer
 			m_gbufferShader.use();
 			m_gbufferShader.setUniform("u_camMatrix", camera.cameraMatrix);
 			m_monkeyModel.draw(m_gbufferShader, scene.monkeyTransform, scene.monkeyMaterialIndex);
-
-			// Back-depth slab pass
-			m_backDepthFbo.bind();
-			const GLenum noneBuff[1] = { GL_NONE };
-			glDrawBuffers(1, noneBuff);
-			glReadBuffer(GL_NONE);
-
-			glClearDepth(0.0f);
-			glClear(GL_DEPTH_BUFFER_BIT);
-
-			glDepthFunc(GL_GREATER);
-			glCullFace(GL_FRONT);
-
-			m_gbufferShader.use();
-			m_monkeyModel.draw(m_gbufferShader, scene.monkeyTransform, scene.monkeyMaterialIndex);
-
-			glCullFace(GL_BACK);
-			glDepthFunc(GL_LESS);
-			glClearDepth(1.0f);
-		}
-		else
-		{
-			// Clear back-depth when no mesh is rendered
-			m_backDepthFbo.bind();
-			glClearDepth(1.0f);
-			glClear(GL_DEPTH_BUFFER_BIT);
 		}
 
 		// -------------------------------------------------------------
 		// 2. Primary Path Tracing Pass
 		// -------------------------------------------------------------
-		bool shouldRaymarch = m_config.enableDenoising || (m_frameCounter < m_config.maxAccumulationFrames);
+		bool shouldRaymarch = usePrimary || (m_frameCounter < m_config.maxAccumulationFrames);
 
 		if (shouldRaymarch)
 		{
 			int prevAccumIdx = m_accumIdx;
-			if (!m_config.enableDenoising)
+			if (!usePrimary)
 			{
 				m_accumIdx = (m_accumIdx + 1) % 2;
 				m_accumFbo[m_accumIdx].bind();
@@ -660,7 +705,6 @@ namespace renderer
 
 			float shaderFov = 1.0f / std::tan(glm::radians(camera.fov) * 0.5f);
 			m_sdfShader.setUniform("u_camMatrix", camera.view);
-			m_sdfShader.setUniform("u_viewProjection", camera.cameraMatrix);
 			m_sdfShader.setUniform("u_fov", shaderFov);
 			m_sdfShader.setUniform("u_time", static_cast<float>(time));
 			m_sdfShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
@@ -669,15 +713,16 @@ namespace renderer
 			m_sdfShader.setUniform("u_frameCounter", m_frameCounter);
 			m_sdfShader.setUniform("u_rayBounces", m_config.rayBounces);
 			m_sdfShader.setUniform("u_contrast", m_config.contrast);
-			m_sdfShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
-			m_sdfShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
-			m_sdfShader.setUniform("u_enableMeshShadows", m_config.enableMeshShadows ? 1 : 0);
+			m_sdfShader.setUniform("u_enableDenoising", usePrimary ? 1 : 0);
+			m_sdfShader.setUniform("u_demodulateAlbedo", demodulateAlbedo ? 1 : 0);
 
 			// 3D SDF Texture Parameters
 			m_sdfShader.setUniform("u_enableSdf3DTexture", m_config.enableSdf3DTexture ? 1 : 0);
 			m_sdfShader.setUniform("u_sdfTextureWorldSize", m_config.sdfTextureWorldSize);
 			m_sdfShader.setUniform("u_sdfTextureOffset", m_config.sdfTextureOffset);
 			m_sdfShader.setUniform("u_sdfTextureMaterialId", m_config.sdfTextureMaterialId);
+			m_sdfShader.setUniform("u_unsignedMeshDistance", m_config.unsignedMeshDistance ? 1 : 0);
+			m_sdfShader.setUniform("u_approximateMeshDistance", m_config.sdfMethod != SdfMethod::ExactBaseline ? 1 : 0);
 
 			// Materials
 			for (int i = 0; i < 16; ++i)
@@ -743,9 +788,6 @@ namespace renderer
 			m_sdfShader.setUniform("t_gbufferMaterial", 6);
 			m_gbufferMaterial.bind(6);
 
-			m_sdfShader.setUniform("t_gbufferBackDepth", 7);
-			m_backDepthTexture.bind(7);
-
 			m_sdfShader.setUniform("u_enableBlueNoise", (m_config.enableBlueNoise && m_blueNoiseAvailable) ? 1 : 0);
 			m_sdfShader.setUniform("u_noiseFrameIndex", m_noiseFrameCounter);
 			m_sdfShader.setUniform("u_samplingSeed", m_samplingSeed);
@@ -757,16 +799,25 @@ namespace renderer
 			m_stbnTexture1.bind(9);
 
 			glDisable(GL_DEPTH_TEST);
+			if (queries)
+			{
+				glQueryCounter(queries->timestamps[FrameGpuQueries::TraceStart], GL_TIMESTAMP);
+			}
 			m_quad.draw();
+			if (queries)
+			{
+				glQueryCounter(queries->timestamps[FrameGpuQueries::TraceEnd], GL_TIMESTAMP);
+				queries->traced = true;
+			}
 			glEnable(GL_DEPTH_TEST);
 		}
 
 		// -------------------------------------------------------------
 		// 3. SVGF Denoising Pipeline
 		// -------------------------------------------------------------
-		const Texture* finalFilteredTexture = nullptr;
+		const Texture* finalFilteredTexture = geometryPreview ? &m_primaryIllum : nullptr;
 
-		if (m_config.enableDenoising)
+		if (m_config.enableDenoising && !geometryPreview)
 		{
 			int prevTempIdx = (m_temporalIdx + 1) % 2;
 
@@ -900,10 +951,10 @@ namespace renderer
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		m_resolveShader.use();
-		m_resolveShader.setUniform("u_debugView", m_config.debugView);
-		m_resolveShader.setUniform("u_demodulateAlbedo", m_config.demodulateAlbedo ? 1 : 0);
+		m_resolveShader.setUniform("u_debugView", geometryPreview && m_config.debugView < 4 ? 0 : m_config.debugView);
+		m_resolveShader.setUniform("u_demodulateAlbedo", demodulateAlbedo ? 1 : 0);
 		m_resolveShader.setUniform("u_contrast", m_config.contrast);
-		m_resolveShader.setUniform("u_enableDenoising", m_config.enableDenoising ? 1 : 0);
+		m_resolveShader.setUniform("u_enableDenoising", usePrimary ? 1 : 0);
 		m_resolveShader.setUniform("u_enableSliceInspector", m_config.enableSliceInspector ? 1 : 0);
 		m_resolveShader.setUniform("u_sliceAxis", m_config.sliceAxis);
 		m_resolveShader.setUniform("u_slicePosition", m_config.slicePosition);
@@ -927,7 +978,7 @@ namespace renderer
 			}
 		}
 
-		if (m_config.enableDenoising && finalFilteredTexture)
+		if (finalFilteredTexture)
 		{
 			m_resolveShader.setUniform("t_filteredIllum", 0);
 			finalFilteredTexture->bind(0);
@@ -1001,6 +1052,10 @@ namespace renderer
 		glDisable(GL_DEPTH_TEST);
 		m_quad.draw();
 		glEnable(GL_DEPTH_TEST);
+		if (queries)
+		{
+			glQueryCounter(queries->timestamps[FrameGpuQueries::RenderEnd], GL_TIMESTAMP);
+		}
 
 		// Advance temporal state
 		m_temporalIdx = (m_temporalIdx + 1) % 2;
@@ -1013,6 +1068,12 @@ namespace renderer
 
 	void PathTracerPipeline::saveScreenshot(const std::string& filename)
 	{
+		if (m_geometryPreview)
+		{
+			m_outputTexture.saveToDisk(filename);
+			return;
+		}
+
 		m_resolvedFbo.bind();
 		glViewport(0, 0, m_config.renderWidth, m_config.renderHeight);
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);

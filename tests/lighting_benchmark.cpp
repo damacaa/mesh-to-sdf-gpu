@@ -317,7 +317,7 @@ void run(Json input, const fs::path& output, const fs::path& executable)
         {"camera_yaw", camera.yaw}, {"camera_pitch", camera.pitch}, {"camera_fov", camera.fov},
         {"file_fingerprints_fnv1a64", hashes}, {"fixed_time_seconds", 0.0},
         {"enable_denoising", true}, {"enable_antialiasing", false}, {"enable_fxaa", false},
-        {"enable_mesh_shadows", base.enableMeshShadows}, {"contrast", 1.0},
+        {"contrast", 1.0},
         {"measurement_space", "linear RGB before contrast, gamma, and FXAA; albedo remodulated as in resolve"},
         {"reference", "mean of raw PCG frames; same transport, RGB16F buffers, and firefly cap 4"},
         {"blue_repeats", "fixed spatial shifts and temporal phases of one 128x128x64 STBN volume"},

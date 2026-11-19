@@ -19,6 +19,7 @@ uniform ivec3 u_resolution;
 uniform float u_worldSize;
 uniform vec3 u_worldOffset;
 uniform uint u_triangleCount;
+uniform int u_unsignedDistance;
 
 shared GpuTriangle s_tile[64];
 
@@ -59,7 +60,10 @@ void main()
 					minDistSq = dSq;
 				}
 
-				totalSolidAngle += triangleSolidAngle(worldPos, a, b, c);
+				if (u_unsignedDistance == 0)
+				{
+					totalSolidAngle += triangleSolidAngle(worldPos, a, b, c);
+				}
 			}
 		}
 		barrier();

@@ -543,8 +543,9 @@ namespace renderer
 				shader.setUniform("u_worldSize", params.worldSize);
 				shader.setUniform("u_worldOffset", params.worldOffset);
 				shader.setUniform("u_triangleCount", triCount);
+				shader.setUniform("u_unsignedDistance", params.unsignedDistance ? 1 : 0);
 				shader.dispatch(groups4, groups4, groups4);
-				shader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+				shader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
 			});
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
@@ -730,8 +731,9 @@ namespace renderer
 			finalizeShader.setUniform("u_resolution", resVec);
 			finalizeShader.setUniform("u_worldSize", params.worldSize);
 			finalizeShader.setUniform("u_worldOffset", params.worldOffset);
+			finalizeShader.setUniform("u_unsignedDistance", params.unsignedDistance ? 1 : 0);
 			finalizeShader.dispatch(groups4, groups4, groups4);
-			finalizeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			finalizeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
 		});
 
 		stats.totalGpuMs = stats.seedGpuMs + stats.floodGpuMs + stats.finalizeGpuMs;

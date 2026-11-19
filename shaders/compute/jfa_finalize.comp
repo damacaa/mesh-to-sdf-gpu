@@ -15,6 +15,7 @@ layout(rgba32f, binding = 2) uniform readonly image3D u_seedNormTex;
 uniform ivec3 u_resolution;
 uniform float u_worldSize;
 uniform vec3 u_worldOffset;
+uniform int u_unsignedDistance;
 
 void main()
 {
@@ -36,7 +37,8 @@ void main()
 	vec3 seedNorm = seedNormSample.xyz;
 	vec3 diff = worldPos - seedPos.xyz;
 	float dist = length(diff);
-	float sgn = (seedNormSample.w < 0.5 && dot(diff, seedNorm) < 0.0) ? -1.0 : 1.0;
+	float sgn = (u_unsignedDistance == 0 && seedNormSample.w < 0.5 && dot(diff, seedNorm) < 0.0)
+		? -1.0 : 1.0;
 
 	imageStore(u_sdfTexture, coord, vec4(sgn * dist, 0.0, 0.0, 0.0));
 }

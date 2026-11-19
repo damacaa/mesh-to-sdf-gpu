@@ -63,6 +63,7 @@ namespace renderer
 		int cameraViewportHeight = 512;
 		bool accumulateSeeds = false;
 		bool resetAccumulatedSeeds = false;
+		bool unsignedDistance = false;
 	};
 
 	class SdfGenerator

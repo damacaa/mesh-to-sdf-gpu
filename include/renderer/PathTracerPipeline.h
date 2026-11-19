@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <glm/glm.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 #include "renderer/Camera.h"
@@ -28,7 +30,8 @@ namespace renderer
 			int rayBounces = 3;
 			float contrast = 1.15f;
 			bool enableAntialiasing = true;
-			bool enableMeshShadows = true;
+			bool geometryPreview = false;
+			bool collectGpuTimings = false;
 
 			// SVGF Denoising Parameters
 			bool enableDenoising = true;
@@ -56,6 +59,7 @@ namespace renderer
 			bool autoFitSdfMesh = true;
 			bool realtimeSdfUpdate = false;
 			bool accumulateCameraSdfSeeds = true;
+			bool unsignedMeshDistance = false;
 
 			// 2D Orthogonal SDF Slice Inspector
 			bool enableSliceInspector = false;
@@ -99,6 +103,15 @@ namespace renderer
 		void runReferenceComparison();
 		const SdfStats& getLastSdfStats() const { return m_lastSdfStats; }
 		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
+
+		struct FrameGpuTimings
+		{
+			float sdfBuildMs = 0.0f;
+			float renderMs = 0.0f;
+			float pathTraceMs = 0.0f;
+		};
+
+		const std::optional<FrameGpuTimings>& getFrameGpuTimings() const { return m_frameGpuTimings; }
 
 		void render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth = 0, int displayHeight = 0);
 		enum class LightingStage { Raw, Temporal, Filtered };
@@ -144,7 +157,21 @@ namespace renderer
 		glm::vec3 m_refWorldOffset = glm::vec3(0.0f);
 		std::string m_refModelPath;
 		bool m_refAutoFit = true;
+		bool m_refUnsignedDistance = false;
 		SdfStats m_lastSdfStats;
+
+		struct FrameGpuQueries
+		{
+			enum Timestamp { RenderStart, TraceStart, TraceEnd, RenderEnd, Count };
+			std::array<GLuint, Count> timestamps{};
+			float sdfBuildMs = 0.0f;
+			bool traced = false;
+		};
+		std::array<FrameGpuQueries, 8> m_gpuQueries{};
+		size_t m_nextGpuTimingResult = 0;
+		size_t m_pendingGpuTimings = 0;
+		float m_pendingSdfBuildMs = 0.0f;
+		std::optional<FrameGpuTimings> m_frameGpuTimings;
 
 		// STBN Spatiotemporal Blue Noise 3D textures
 		Texture3D m_stbnTexture0;
@@ -159,10 +186,7 @@ namespace renderer
 		Texture m_gbufferNormal;
 		Texture m_gbufferMaterial;
 		Texture m_depthTexture;
-		Texture m_backDepthTexture;
-
 		Framebuffer m_gbufferFbo;
-		Framebuffer m_backDepthFbo;
 
 		// Primary 1-SPP Path Tracer MRT resources
 		Texture m_primaryIllum;
@@ -208,7 +232,9 @@ namespace renderer
 		glm::mat4 m_oldCameraView = glm::mat4(0.0f);
 		glm::mat4 m_prevCameraMatrix = glm::mat4(1.0f);
 		bool m_firstFrame = true;
+		bool m_geometryPreview = false;
 
 		void freeResources();
+		FrameGpuQueries* beginFrameGpuTiming();
 	};
 } // namespace renderer
