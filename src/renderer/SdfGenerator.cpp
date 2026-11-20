@@ -138,6 +138,8 @@ namespace renderer
 		, m_jfaSeedGBufferShader(std::move(other.m_jfaSeedGBufferShader))
 		, m_jfaSeedResolveShader(std::move(other.m_jfaSeedResolveShader))
 		, m_jfaStepShader(std::move(other.m_jfaStepShader))
+		, m_jfaWindingVoxelizeShader(std::move(other.m_jfaWindingVoxelizeShader))
+		, m_jfaWindingPrefixShader(std::move(other.m_jfaWindingPrefixShader))
 		, m_jfaFinalizeShaderR32F(std::move(other.m_jfaFinalizeShaderR32F))
 		, m_jfaFinalizeShaderR16F(std::move(other.m_jfaFinalizeShaderR16F))
 		, m_gbufferShader(std::move(other.m_gbufferShader))
@@ -149,6 +151,7 @@ namespace renderer
 		, m_cachedSsboTransform(other.m_cachedSsboTransform)
 		, m_timeQuery(other.m_timeQuery)
 		, m_atomicSeedTex(std::move(other.m_atomicSeedTex))
+		, m_windingDeltaTex(std::move(other.m_windingDeltaTex))
 		, m_seedPosTex{ std::move(other.m_seedPosTex[0]), std::move(other.m_seedPosTex[1]) }
 		, m_seedNormTex{ std::move(other.m_seedNormTex[0]), std::move(other.m_seedNormTex[1]) }
 		, m_persistentSeedPosTex(std::move(other.m_persistentSeedPosTex))
@@ -195,6 +198,8 @@ namespace renderer
 			m_jfaSeedGBufferShader = std::move(other.m_jfaSeedGBufferShader);
 			m_jfaSeedResolveShader = std::move(other.m_jfaSeedResolveShader);
 			m_jfaStepShader = std::move(other.m_jfaStepShader);
+			m_jfaWindingVoxelizeShader = std::move(other.m_jfaWindingVoxelizeShader);
+			m_jfaWindingPrefixShader = std::move(other.m_jfaWindingPrefixShader);
 			m_jfaFinalizeShaderR32F = std::move(other.m_jfaFinalizeShaderR32F);
 			m_jfaFinalizeShaderR16F = std::move(other.m_jfaFinalizeShaderR16F);
 			m_gbufferShader = std::move(other.m_gbufferShader);
@@ -206,6 +211,7 @@ namespace renderer
 			m_cachedSsboTransform = other.m_cachedSsboTransform;
 			m_timeQuery = other.m_timeQuery;
 			m_atomicSeedTex = std::move(other.m_atomicSeedTex);
+			m_windingDeltaTex = std::move(other.m_windingDeltaTex);
 			m_seedPosTex[0] = std::move(other.m_seedPosTex[0]);
 			m_seedPosTex[1] = std::move(other.m_seedPosTex[1]);
 			m_seedNormTex[0] = std::move(other.m_seedNormTex[0]);
@@ -255,6 +261,8 @@ namespace renderer
 		m_jfaSeedGBufferShader = ComputeShader(shadersRoot + "/compute/jfa_seed_gbuffer.comp");
 		m_jfaSeedResolveShader = ComputeShader(shadersRoot + "/compute/jfa_seed_resolve.comp");
 		m_jfaStepShader = ComputeShader(shadersRoot + "/compute/jfa_step.comp");
+		m_jfaWindingVoxelizeShader = ComputeShader(shadersRoot + "/compute/jfa_winding_voxelize.comp");
+		m_jfaWindingPrefixShader = ComputeShader(shadersRoot + "/compute/jfa_winding_prefix.comp");
 		m_jfaFinalizeShaderR32F = ComputeShader(shadersRoot + "/compute/jfa_finalize.comp", { "SDF_IMAGE_FORMAT r32f" });
 		m_jfaFinalizeShaderR16F = ComputeShader(shadersRoot + "/compute/jfa_finalize.comp", { "SDF_IMAGE_FORMAT r16f" });
 
@@ -272,6 +280,8 @@ namespace renderer
 		m_jfaSeedGBufferShader.free();
 		m_jfaSeedResolveShader.free();
 		m_jfaStepShader.free();
+		m_jfaWindingVoxelizeShader.free();
+		m_jfaWindingPrefixShader.free();
 		m_jfaFinalizeShaderR32F.free();
 		m_jfaFinalizeShaderR16F.free();
 		m_gbufferShader.free();
@@ -294,6 +304,7 @@ namespace renderer
 		}
 
 		m_atomicSeedTex.dispose();
+		m_windingDeltaTex.dispose();
 		m_seedPosTex[0].dispose();
 		m_seedPosTex[1].dispose();
 		m_seedNormTex[0].dispose();
@@ -352,6 +363,10 @@ namespace renderer
 		m_atomicSeedTex.allocateWithData(
 			resolution, resolution, resolution,
 			GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr,
+			GL_NEAREST, GL_CLAMP_TO_EDGE);
+		m_windingDeltaTex.allocateWithData(
+			resolution, resolution, resolution,
+			GL_R32I, GL_RED_INTEGER, GL_INT, nullptr,
 			GL_NEAREST, GL_CLAMP_TO_EDGE);
 
 		for (int i = 0; i < 2; ++i)
@@ -463,6 +478,18 @@ namespace renderer
 
 	SdfStats SdfGenerator::generate(const Model& model, const SdfGenerationParams& params, Texture3D& outputTexture)
 	{
+		return generateImpl(&model, nullptr, params, outputTexture);
+	}
+
+	void SdfGenerator::generateFromCapture(const CameraSurfaceCapture& capture, SdfGenerationParams params, Texture3D& distance)
+	{
+		params.method = SdfMethod::JfaCameraGBuffer;
+		generateImpl(nullptr, &capture, params, distance);
+	}
+
+	SdfStats SdfGenerator::generateImpl(const Model* model, const CameraSurfaceCapture* capture,
+		const SdfGenerationParams& params, Texture3D& outputTexture)
+	{
 		SdfStats stats{};
 		const int res = std::max(8, params.resolution);
 		const GLenum glFormat = (params.format == SdfFormat::R16F) ? GL_R16F : GL_R32F;
@@ -482,7 +509,7 @@ namespace renderer
 
 		const bool needsTriangleSsbo = (params.method == SdfMethod::ExactBaseline || params.method == SdfMethod::JfaVoxelShell);
 		const bool isGBufferMethod = (params.method == SdfMethod::JfaGBufferSplat || params.method == SdfMethod::JfaCameraGBuffer);
-		const size_t currCount = model.isValid() ? model.getTriangleCount() : 0u;
+		const size_t currCount = model ? model->getTriangleCount() : 0u;
 		const uint32_t triCount = static_cast<uint32_t>(currCount);
 		stats.triangleCount = static_cast<int>(triCount);
 
@@ -492,8 +519,8 @@ namespace renderer
 		// Keep a valid SSBO bound to slot 0 for compute shaders that declare TriangleBuffer.
 		if (needsTriangleSsbo)
 		{
-			const glm::vec3 currMin = model.getAabbMin();
-			const glm::vec3 currMax = model.getAabbMax();
+			const glm::vec3 currMin = model->getAabbMin();
+			const glm::vec3 currMax = model->getAabbMax();
 			const bool cacheValid = (m_triangleSsbo != 0)
 				&& (m_cachedSsboTriangleCount == currCount)
 				&& (m_cachedSsboAabbMin == currMin)
@@ -502,9 +529,9 @@ namespace renderer
 			if (!cacheValid)
 			{
 				std::vector<GpuTriangle> triangles;
-				if (model.isValid())
+				if (triCount > 0u)
 				{
-					triangles = model.buildGpuTriangles(params.modelTransform);
+					triangles = model->buildGpuTriangles(params.modelTransform);
 				}
 				ensureTriangleSsbo(triangles);
 				m_cachedSsboTriangleCount = currCount;
@@ -554,8 +581,8 @@ namespace renderer
 		}
 
 		ensureJfaVolumes(res);
-		size_t tempBytes = ssboBytes + voxelCount * (4u + 6u * 16u);
-		if (isGBufferMethod)
+		size_t tempBytes = ssboBytes + voxelCount * (8u + 6u * 16u);
+		if (isGBufferMethod && !capture)
 		{
 			ensureOrthoAtlas(kOrthoAtlasTileSize);
 			const size_t atlasPixels = static_cast<size_t>(m_orthoTileSize * 3) * static_cast<size_t>(m_orthoTileSize * 2);
@@ -567,7 +594,12 @@ namespace renderer
 		const int atlasHeight = m_orthoTileSize * 2;
 		int gbufW = atlasWidth;
 		int gbufH = atlasHeight;
-		if (params.method == SdfMethod::JfaCameraGBuffer)
+		if (capture)
+		{
+			gbufW = capture->worldPositions.getWidth();
+			gbufH = capture->worldPositions.getHeight();
+		}
+		else if (params.method == SdfMethod::JfaCameraGBuffer)
 		{
 			const int srcW = std::max(1, params.cameraViewportWidth);
 			const int srcH = std::max(1, params.cameraViewportHeight);
@@ -591,14 +623,16 @@ namespace renderer
 		}
 
 		// 1. Seed initialization pass
-		stats.seedGpuMs = measureGpuPass(m_timeQuery, [&]() {
-			if (params.method == SdfMethod::JfaGBufferSplat && model.isValid() && triCount > 0u)
+		// The frame timer already covers the live capture. Avoid a synchronous query for each pass.
+		GLuint timeQuery = capture ? 0 : m_timeQuery;
+		stats.seedGpuMs = measureGpuPass(timeQuery, [&]() {
+			if (params.method == SdfMethod::JfaGBufferSplat && triCount > 0u)
 			{
-				renderSixViewGBuffer(model, params);
+				renderSixViewGBuffer(*model, params);
 			}
-			else if (params.method == SdfMethod::JfaCameraGBuffer && model.isValid() && triCount > 0u)
+			else if (params.method == SdfMethod::JfaCameraGBuffer && triCount > 0u)
 			{
-				renderCameraGBuffer(model, params, gbufW, gbufH);
+				renderCameraGBuffer(*model, params, gbufW, gbufH);
 			}
 
 			m_seedPosTex[0].bindImage(0, GL_WRITE_ONLY);
@@ -645,12 +679,19 @@ namespace renderer
 			}
 			else
 			{
-				if (model.isValid() && triCount > 0u)
+				const Texture& positions = capture ? capture->worldPositions : m_orthoWorldPos;
+				const glm::vec3 origin = capture ? capture->origin : glm::vec3(0);
+				const glm::mat3 invRotation = capture ? capture->invRotation : glm::mat3(1.0f);
+				if (capture || triCount > 0u)
 				{
 					m_atomicSeedTex.bindImage(2, GL_READ_WRITE);
-					m_orthoWorldPos.bind(0);
-					m_orthoDepth.bind(1);
+					positions.bind(0);
+					(capture ? capture->depth : m_orthoDepth).bind(1);
+					(capture ? capture->materials : m_orthoMaterial).bind(2);
 					m_jfaSeedGBufferShader.use();
+					m_jfaSeedGBufferShader.setUniform("u_captureOrigin", origin);
+					m_jfaSeedGBufferShader.setUniform("u_captureInvRotation", invRotation);
+					m_jfaSeedGBufferShader.setUniform("u_materialFilter", capture ? capture->materialId : -1);
 					m_jfaSeedGBufferShader.setUniform("t_gbufferWorldPos", 0);
 					m_jfaSeedGBufferShader.setUniform("t_gbufferDepth", 1);
 					m_jfaSeedGBufferShader.setUniform("u_resolution", resVec);
@@ -667,9 +708,11 @@ namespace renderer
 				m_persistentSeedPosTex.bindImage(3, GL_READ_WRITE);
 				m_persistentSeedNormTex.bindImage(4, GL_READ_WRITE);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_triangleSsbo);
-				m_orthoWorldPos.bind(0);
-				m_orthoNormal.bind(1);
+				positions.bind(0);
+				(capture ? capture->normals : m_orthoNormal).bind(1);
 				m_jfaSeedResolveShader.use();
+				m_jfaSeedResolveShader.setUniform("u_captureOrigin", origin);
+				m_jfaSeedResolveShader.setUniform("u_captureInvRotation", invRotation);
 				m_jfaSeedResolveShader.setUniform("t_gbufferWorldPos", 0);
 				m_jfaSeedResolveShader.setUniform("t_gbufferNormal", 1);
 				m_jfaSeedResolveShader.setUniform("u_resolution", resVec);
@@ -698,7 +741,7 @@ namespace renderer
 		// 2. 3D Jump Flooding pass
 		int readIdx = 0;
 		const std::vector<int> steps = buildJfaSteps(res, params.jfaVariant);
-		stats.floodGpuMs = measureGpuPass(m_timeQuery, [&]() {
+		stats.floodGpuMs = measureGpuPass(timeQuery, [&]() {
 			m_jfaStepShader.use();
 			m_jfaStepShader.setUniform("u_resolution", resVec);
 			m_jfaStepShader.setUniform("u_worldSize", params.worldSize);
@@ -719,19 +762,60 @@ namespace renderer
 		});
 
 		// 3. Final distance and sign pass
+		const bool useWindingVotes = (params.method == SdfMethod::JfaVoxelShell
+			&& !params.unsignedDistance
+			&& params.shellHalfThicknessVoxels <= 0.0f
+			&& triCount > 0u);
+
 		ComputeShader& finalizeShader = (params.format == SdfFormat::R16F)
 			? m_jfaFinalizeShaderR16F
 			: m_jfaFinalizeShaderR32F;
 
-		stats.finalizeGpuMs = measureGpuPass(m_timeQuery, [&]() {
+		stats.finalizeGpuMs = measureGpuPass(timeQuery, [&]() {
+			if (useWindingVotes)
+			{
+				const GLuint zeroUint = 0u;
+				const GLint zeroInt = 0;
+				glClearTexImage(m_atomicSeedTex.id, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, &zeroUint);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_triangleSsbo);
+				const GLuint triGroups = divUp(triCount, 64);
+				const GLuint groups8 = divUp(res, 8);
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					glClearTexImage(m_windingDeltaTex.id, 0, GL_RED_INTEGER, GL_INT, &zeroInt);
+					m_windingDeltaTex.bindImage(0, GL_READ_WRITE);
+					m_jfaWindingVoxelizeShader.use();
+					m_jfaWindingVoxelizeShader.setUniform("u_resolution", resVec);
+					m_jfaWindingVoxelizeShader.setUniform("u_worldSize", params.worldSize);
+					m_jfaWindingVoxelizeShader.setUniform("u_worldOffset", params.worldOffset);
+					m_jfaWindingVoxelizeShader.setUniform("u_triangleCount", triCount);
+					m_jfaWindingVoxelizeShader.setUniform("u_axis", axis);
+					m_jfaWindingVoxelizeShader.dispatch(triGroups, 1, 1);
+					m_jfaWindingVoxelizeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+					m_windingDeltaTex.bindImage(0, GL_READ_ONLY);
+					m_atomicSeedTex.bindImage(1, GL_READ_WRITE);
+					m_jfaWindingPrefixShader.use();
+					m_jfaWindingPrefixShader.setUniform("u_resolution", resVec);
+					m_jfaWindingPrefixShader.setUniform("u_axis", axis);
+					m_jfaWindingPrefixShader.dispatch(groups8, groups8, 1);
+					m_jfaWindingPrefixShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+				}
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+			}
+
 			outputTexture.bindImage(0, GL_WRITE_ONLY);
 			m_seedPosTex[readIdx].bindImage(1, GL_READ_ONLY);
 			m_seedNormTex[readIdx].bindImage(2, GL_READ_ONLY);
+			m_atomicSeedTex.bindImage(3, GL_READ_ONLY);
 			finalizeShader.use();
 			finalizeShader.setUniform("u_resolution", resVec);
 			finalizeShader.setUniform("u_worldSize", params.worldSize);
 			finalizeShader.setUniform("u_worldOffset", params.worldOffset);
 			finalizeShader.setUniform("u_unsignedDistance", params.unsignedDistance ? 1 : 0);
+			const float voxelSize = params.worldSize / static_cast<float>(res);
+			finalizeShader.setUniform("u_shellHalfThickness", std::max(0.0f, params.shellHalfThicknessVoxels) * voxelSize);
+			finalizeShader.setUniform("u_useWindingVotes", useWindingVotes ? 1 : 0);
 			finalizeShader.dispatch(groups4, groups4, groups4);
 			finalizeShader.memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT);
 		});

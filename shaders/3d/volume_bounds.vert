@@ -1,6 +1,7 @@
 #version 460 core
 uniform mat4 u_viewProjection;
-uniform vec3 u_minimum;
+uniform vec3 u_center;
+uniform mat3 u_rotation;
 uniform float u_size;
 void main()
 {
@@ -9,5 +10,5 @@ void main()
 	vec3 offset = vec3(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1);
 	if ((gl_VertexID & 1) != 0)
 		offset[axis] = mix(offset[axis], 0.5, 0.2);
-	gl_Position = u_viewProjection * vec4(u_minimum + offset * u_size, 1);
+	gl_Position = u_viewProjection * vec4(u_center + u_rotation * ((offset - 0.5) * u_size), 1);
 }

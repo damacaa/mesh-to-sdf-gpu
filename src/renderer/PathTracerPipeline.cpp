@@ -10,14 +10,45 @@ namespace renderer
 {
 	namespace
 	{
-		const glm::vec3 dynamicBoxMin(-2.0f, 0.0f, -2.0f);
-		constexpr float dynamicBoxSize = 4.0f;
+		constexpr float defaultDynamicModelExtent = 4.0f;
+
+		int clampedDynamicResolution(int resolution)
+		{
+			return std::max(resolution, 8);
+		}
+
+		float clampedDynamicGridSize(float gridSize)
+		{
+			return std::max(gridSize, 0.25f);
+		}
 
 		template<class Program>
-		void setDynamicBounds(const Program& shader)
+		void setDynamicBounds(const Program& shader, const glm::vec3& center, const glm::mat3& rotation, float gridSize)
 		{
-			shader.setUniform("dynamicBoxMin", dynamicBoxMin);
-			shader.setUniform("dynamicBoxSize", dynamicBoxSize);
+			shader.setUniform("dynamicGridCenter", center);
+			shader.setUniform("dynamicGridInvRot", glm::transpose(rotation));
+			shader.setUniform("dynamicGridSize", gridSize);
+		}
+
+		bool gridInView(const glm::mat4& viewProjection, const glm::vec3& center, const glm::mat3& rotation, float gridSize)
+		{
+			// Reject a cube only when all eight corners lie outside one clip plane.
+			unsigned commonPlanes = 0x3fu;
+			for (int corner = 0; corner < 8; ++corner)
+			{
+				glm::vec3 offset(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1);
+				glm::vec3 worldCorner = center + rotation * ((offset - 0.5f) * gridSize);
+				glm::vec4 p = viewProjection * glm::vec4(worldCorner, 1.0f);
+				unsigned planes = 0;
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					if (p[axis] < -p.w) planes |= 1u << (2 * axis);
+					if (p[axis] > p.w) planes |= 2u << (2 * axis);
+				}
+				commonPlanes &= planes;
+				if (commonPlanes == 0) return true;
+			}
+			return false;
 		}
 	}
 
@@ -27,10 +58,8 @@ namespace renderer
 		, m_assetsRoot(assetsRoot)
 	{
 		m_boundsShader = Shader(shadersRoot + "/3d/volume_bounds.vert", shadersRoot + "/3d/volume_bounds.frag");
-		m_dynamicBoxShader = Shader(shadersRoot + "/3d/stretching_box.vert", shadersRoot + "/3d/gbuffer.frag");
-		m_dynamicBoxSeed = ComputeShader(shadersRoot + "/compute/dynamic_seed.comp");
-		m_dynamicBoxDistance = ComputeShader(shadersRoot + "/compute/dynamic_distance.comp");
-		glGenVertexArrays(1, &m_dynamicBoxVao);
+		m_boxShader = Shader(shadersRoot + "/3d/stretching_box.vert", shadersRoot + "/3d/gbuffer.frag");
+		glGenVertexArrays(1, &m_proceduralVao);
 		m_gbufferShader = Shader(shadersRoot + "/3d/geometry.vert", shadersRoot + "/3d/gbuffer.frag");
 		m_sdfShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/3d/sdf_raymarching.frag");
 		m_temporalShader = Shader(shadersRoot + "/common/screen_plane.vert", shadersRoot + "/denoise/svgf_temporal.frag");
@@ -44,10 +73,12 @@ namespace renderer
 		{
 			m_sdfShader.addDefine("ANTIALIASING");
 		}
-		std::string monkeyPath = assetsRoot + "/monkey/demo.gltf";
-		if (std::filesystem::exists(monkeyPath))
+		std::string dynamicModelPath = assetsRoot + "/monkey/demo.gltf";
+		if (std::filesystem::exists(dynamicModelPath))
 		{
-			m_monkeyModel.loadGLTF(monkeyPath);
+			m_dynamicModel.loadGLTF(dynamicModelPath);
+			const auto facingEntrance = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0, 1, 0));
+			m_dynamicMeshTransform = facingEntrance * m_dynamicModel.computeFitTransform(defaultDynamicModelExtent, glm::vec3(0), 0.33f);
 		}
 
 		// Load Spatiotemporal Blue Noise (STBN) textures
@@ -79,13 +110,9 @@ namespace renderer
 				glDeleteQueries(FrameGpuQueries::Count, queries.timestamps.data());
 			}
 		}
-		for (auto& tex : m_scene3DTextures)
-		{
-			tex.dispose();
-		}
-		m_scene3DTextures.clear();
-		glDeleteVertexArrays(1, &m_dynamicBoxVao);
-		m_dynamicBoxVao = 0;
+		m_sceneVolumes.clear();
+		glDeleteVertexArrays(1, &m_proceduralVao);
+		m_proceduralVao = 0;
 		m_referenceSdfTexture.dispose();
 		m_sdfGenerator.dispose();
 		m_stbnTexture0.dispose();
@@ -146,7 +173,7 @@ namespace renderer
 
 		// 1. GBuffer textures & framebuffer (for mesh rasterization)
 		m_gbufferAlbedo = Texture(width, height, Texture::TextureType::LinearData);
-		m_gbufferWorldPos = Texture(width, height, Texture::TextureType::LinearData);
+		m_gbufferWorldPos = Texture(width, height, Texture::TextureType::AccumulationData);
 		m_gbufferNormal = Texture(width, height, Texture::TextureType::LinearData);
 		m_gbufferMaterial = Texture(width, height, Texture::TextureType::IntData);
 		m_depthTexture = Texture(width, height, Texture::TextureType::Depth);
@@ -190,7 +217,7 @@ namespace renderer
 		m_filteredHistory = Texture(width, height, Texture::TextureType::LinearData);
 		m_historyValid = false;
 
-		// 4. À-Trous Wavelet filter ping-pong buffers
+		// 4. Ãƒâ‚¬-Trous Wavelet filter ping-pong buffers
 		m_atrousPingTexture = Texture(width, height, Texture::TextureType::LinearData);
 		m_atrousPongTexture = Texture(width, height, Texture::TextureType::LinearData);
 
@@ -235,19 +262,18 @@ namespace renderer
 
 	void PathTracerPipeline::initSceneTextures(const std::vector<SceneDefinition>& scenes)
 	{
-		for (auto& tex : m_scene3DTextures)
-		{
-			tex.dispose();
-		}
-		m_scene3DTextures.clear();
-		m_scene3DTextures.resize(scenes.size());
+		m_sceneVolumes.clear();
+		m_sceneVolumes.resize(scenes.size());
 		m_referenceSdfTexture.dispose();
 		m_refResolution = 0;
 		m_lastSdfStats = SdfStats{};
 	}
 
+	static std::string resolveSdfModelPath(const std::string& modelPath);
+
 	void PathTracerPipeline::setScene(const SceneDefinition& scene, int sceneIndex)
 	{
+		restartDynamicExperiment();
 		m_currentSceneIndex = sceneIndex;
 		m_config.enableSdf3DTexture = scene.enableSdf3DTexture;
 		m_config.sdfTextureResolution = scene.sdfTextureResolution;
@@ -262,6 +288,8 @@ namespace renderer
 		m_config.realtimeSdfUpdate = scene.realtimeSdfUpdate;
 		m_config.accumulateCameraSdfSeeds = scene.accumulateCameraSdfSeeds;
 		m_config.unsignedMeshDistance = scene.unsignedMeshDistance;
+		m_config.dynamicResolution = scene.dynamicResolution;
+		m_config.dynamicGridSize = scene.dynamicGridSize;
 
 		Camera sceneCam(scene.cameraPosition);
 		sceneCam.yaw = scene.cameraYaw;
@@ -271,9 +299,9 @@ namespace renderer
 		m_lastCameraMatrix = sceneCam.cameraMatrix;
 		clearAccumulatedSdfSeeds();
 
-		if (m_currentSceneIndex >= static_cast<int>(m_scene3DTextures.size()))
+		if (m_currentSceneIndex >= static_cast<int>(m_sceneVolumes.size()))
 		{
-			m_scene3DTextures.resize(m_currentSceneIndex + 1);
+			m_sceneVolumes.resize(m_currentSceneIndex + 1);
 		}
 
 		const bool refMismatch = m_referenceSdfTexture.id != 0
@@ -296,7 +324,8 @@ namespace renderer
 		}
 		else
 		{
-			m_scene3DTextures[m_currentSceneIndex].dispose();
+			m_sceneVolumes[m_currentSceneIndex] = MeshVolume{};
+			loadSdfModel(resolveSdfModelPath(m_config.sdfModelPath));
 		}
 
 		m_sdfShader.setFragmentIncludeCode("shapes", scene.glslShapesCode, true);
@@ -388,27 +417,8 @@ namespace renderer
 		return modelPath;
 	}
 
-	void PathTracerPipeline::generateSdf3DTexture(
-		int sceneIndex,
-		SdfMethod method,
-		JfaVariant jfaVariant,
-		SdfFormat format,
-		int resolution,
-		float worldSize,
-		const glm::vec3& worldOffset,
-		const std::string& modelPath,
-		bool autoFit)
+	void PathTracerPipeline::loadSdfModel(const std::string& resolvedPath)
 	{
-		if (sceneIndex < 0)
-		{
-			return;
-		}
-		if (sceneIndex >= static_cast<int>(m_scene3DTextures.size()))
-		{
-			m_scene3DTextures.resize(sceneIndex + 1);
-		}
-
-		const std::string resolvedPath = resolveSdfModelPath(modelPath);
 		if (resolvedPath.empty())
 		{
 			m_sdfModel = Model();
@@ -424,9 +434,35 @@ namespace renderer
 			}
 			else
 			{
+				m_sdfModel = Model();
+				m_loadedSdfModelPath.clear();
 				std::cerr << "PathTracerPipeline: Failed to load SDF mesh: " << resolvedPath << std::endl;
 			}
 		}
+	}
+
+	void PathTracerPipeline::generateSdf3DTexture(
+		int sceneIndex,
+		SdfMethod method,
+		JfaVariant jfaVariant,
+		SdfFormat format,
+		int resolution,
+		float worldSize,
+		const glm::vec3& worldOffset,
+		const std::string& modelPath,
+		bool autoFit)
+	{
+		if (sceneIndex < 0)
+		{
+			return;
+		}
+		if (sceneIndex >= static_cast<int>(m_sceneVolumes.size()))
+		{
+			m_sceneVolumes.resize(sceneIndex + 1);
+		}
+
+		const std::string resolvedPath = resolveSdfModelPath(modelPath);
+		loadSdfModel(resolvedPath);
 
 		const int res = std::max(resolution, 8);
 		SdfGenerationParams params{};
@@ -452,7 +488,8 @@ namespace renderer
 			params.modelTransform = glm::translate(glm::mat4(1.0f), worldOffset);
 		}
 
-		m_lastSdfStats = m_sdfGenerator.generate(m_sdfModel, params, m_scene3DTextures[sceneIndex]);
+		MeshVolume& volume = m_sceneVolumes[sceneIndex];
+		m_lastSdfStats = m_sdfGenerator.generate(m_sdfModel, params, volume.distance);
 		if (m_config.collectGpuTimings)
 		{
 			m_pendingSdfBuildMs += m_lastSdfStats.totalGpuMs;
@@ -468,7 +505,7 @@ namespace renderer
 				&& m_refUnsignedDistance == params.unsignedDistance);
 			if (matchesRef)
 			{
-				m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[sceneIndex], m_referenceSdfTexture, m_lastSdfStats);
+				m_sdfGenerator.computeErrorMetrics(m_sceneVolumes[sceneIndex].distance, m_referenceSdfTexture, m_lastSdfStats);
 			}
 			else
 			{
@@ -510,11 +547,11 @@ namespace renderer
 		{
 			return;
 		}
-		if (m_currentSceneIndex >= static_cast<int>(m_scene3DTextures.size()))
+		if (m_currentSceneIndex >= static_cast<int>(m_sceneVolumes.size()))
 		{
-			m_scene3DTextures.resize(m_currentSceneIndex + 1);
+			m_sceneVolumes.resize(m_currentSceneIndex + 1);
 		}
-		if (m_scene3DTextures[m_currentSceneIndex].id == 0)
+		if (m_sceneVolumes[m_currentSceneIndex].distance.id == 0)
 		{
 			generateSdf3DTexture(m_currentSceneIndex);
 		}
@@ -556,7 +593,7 @@ namespace renderer
 		m_refAutoFit = m_config.autoFitSdfMesh;
 		m_refUnsignedDistance = refParams.unsignedDistance;
 
-		m_sdfGenerator.computeErrorMetrics(m_scene3DTextures[m_currentSceneIndex], m_referenceSdfTexture, m_lastSdfStats);
+		m_sdfGenerator.computeErrorMetrics(m_sceneVolumes[m_currentSceneIndex].distance, m_referenceSdfTexture, m_lastSdfStats);
 	}
 
 	PathTracerPipeline::FrameGpuQueries* PathTracerPipeline::beginFrameGpuTiming()
@@ -585,11 +622,11 @@ namespace renderer
 			FrameGpuTimings result;
 			result.sdfBuildMs = queries.sdfBuildMs;
 			result.renderMs = elapsedMs(FrameGpuQueries::RenderStart, FrameGpuQueries::RenderEnd);
-			if (queries.builtDynamicBox)
+			if (queries.builtDynamicField)
 			{
-				float dynamicBoxMs = elapsedMs(FrameGpuQueries::DynamicBoxStart, FrameGpuQueries::DynamicBoxEnd);
-				result.sdfBuildMs += dynamicBoxMs;
-				result.renderMs -= dynamicBoxMs;
+				float dynamicFieldMs = elapsedMs(FrameGpuQueries::DynamicFieldStart, FrameGpuQueries::DynamicFieldEnd);
+				result.sdfBuildMs += dynamicFieldMs;
+				result.renderMs -= dynamicFieldMs;
 			}
 			if (queries.traced)
 			{
@@ -612,38 +649,104 @@ namespace renderer
 		}
 		queries.sdfBuildMs = sdfBuildMs;
 		queries.traced = false;
-		queries.builtDynamicBox = false;
+		queries.builtDynamicField = false;
 		glQueryCounter(queries.timestamps[FrameGpuQueries::RenderStart], GL_TIMESTAMP);
 		++m_pendingGpuTimings;
 		return &queries;
 	}
 
-	void PathTracerPipeline::drawDynamicBox(const Camera& camera, double time)
+	void PathTracerPipeline::restartDynamicExperiment()
 	{
-		// The architecture supplies depth for camera visibility.
-		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		m_dynamicTime = 0.0;
+		m_lastDynamicTime.reset();
+		clearDynamicCapture();
+	}
+
+	void PathTracerPipeline::updateDynamicPose(double time)
+	{
+		if (m_previousDynamicObject != m_config.dynamicObject)
+		{
+			restartDynamicExperiment();
+			m_previousDynamicObject = m_config.dynamicObject;
+		}
+		glm::vec3 center(0.0f, 2.0f, 0.0f);
+		glm::mat3 rotation(1.0f);
+		if (m_config.dynamicObject == DynamicObject::MovingMesh)
+		{
+			if (m_lastDynamicTime && !m_config.pauseDynamicObject)
+				m_dynamicTime += std::max(0.0, time - *m_lastDynamicTime);
+			m_lastDynamicTime = time;
+			const float phase = 0.5f * static_cast<float>(m_dynamicTime);
+			center.x = 1.5f + 4.0f * std::sin(phase);
+			// The base mesh faces -X; rotate 180 degrees to face +X while moving right, turning smoothly at reversals.
+			const float turnBlend = glm::smoothstep(-0.20f, 0.20f, std::cos(phase));
+			const float yaw = glm::radians(180.0f) * turnBlend;
+			rotation = glm::mat3(glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)));
+		}
+		m_dynamicCenter = center;
+		m_dynamicRotation = rotation;
+	}
+
+	void PathTracerPipeline::buildDynamicReference()
+	{
+		const int resolution = clampedDynamicResolution(m_config.dynamicResolution);
+		const float gridSize = clampedDynamicGridSize(m_config.dynamicGridSize);
+		if (m_dynamicReference.id
+			&& m_dynamicReferenceResolution == resolution
+			&& m_dynamicReferenceGridSize == gridSize)
+			return;
+		SdfGenerationParams params;
+		params.method = SdfMethod::ExactBaseline;
+		params.unsignedDistance = false;
+		params.resolution = resolution;
+		params.worldSize = gridSize;
+		params.worldOffset = glm::vec3(0.0f);
+		params.modelTransform = m_dynamicMeshTransform;
+		m_sdfGenerator.generate(m_dynamicModel, params, m_dynamicReference);
+		m_dynamicReferenceResolution = resolution;
+		m_dynamicReferenceGridSize = gridSize;
+	}
+
+	void PathTracerPipeline::drawStaticModel(const Camera& camera, bool writeSurface)
+	{
+		glColorMask(writeSurface, writeSurface, writeSurface, writeSurface);
 		glDisable(GL_CULL_FACE);
 		m_gbufferShader.use();
 		m_gbufferShader.setUniform("u_camMatrix", camera.cameraMatrix);
-		if (m_config.enableSdf3DTexture && m_sdfModel.isValid())
-		{
-			const auto transform = m_config.autoFitSdfMesh
-				? m_sdfModel.computeFitTransform(m_config.sdfTextureWorldSize, m_config.sdfTextureOffset, 0.15f)
-				: glm::translate(glm::mat4(1.0f), m_config.sdfTextureOffset);
-			m_sdfModel.draw(m_gbufferShader, transform, 0);
-		}
+		const auto transform = m_config.autoFitSdfMesh
+			? m_sdfModel.computeFitTransform(m_config.sdfTextureWorldSize, m_config.sdfTextureOffset, 0.15f)
+			: glm::translate(glm::mat4(1.0f), m_config.sdfTextureOffset);
+		if (writeSurface) m_sdfModel.drawWithMaterials(m_gbufferShader, transform, m_config.sdfTextureMaterialId);
+		else m_sdfModel.draw(m_gbufferShader, transform, m_config.sdfTextureMaterialId);
 		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-		m_dynamicBoxShader.use();
-		m_dynamicBoxShader.setUniform("u_camMatrix", camera.cameraMatrix);
-		m_dynamicBoxShader.setUniform("u_time", m_config.fixedBoxPose ? 0.0f : static_cast<float>(time));
-		m_dynamicBoxShader.setUniform("u_thickness", 0.001f * m_config.boxThicknessMm);
-		m_dynamicBoxShader.setUniform("u_materialIndex", 15);
-		glBindVertexArray(m_dynamicBoxVao);
-		glDrawArrays(GL_TRIANGLES, 0, 6 * 6);
-		glBindVertexArray(0);
+		glEnable(GL_CULL_FACE);
+	}
+
+	void PathTracerPipeline::drawDynamicObject(const Camera& camera, double time)
+	{
+		glDisable(GL_CULL_FACE);
+		if (m_config.dynamicObject == DynamicObject::MovingMesh)
+		{
+			m_gbufferShader.use();
+			m_gbufferShader.setUniform("u_camMatrix", camera.cameraMatrix);
+			const glm::mat4 pose = glm::translate(glm::mat4(1.0f), m_dynamicCenter) * glm::mat4(m_dynamicRotation);
+			const auto transform = pose * m_dynamicMeshTransform;
+			if (m_config.showTexturedMeshes) m_dynamicModel.drawWithMaterials(m_gbufferShader, transform, 15);
+			else m_dynamicModel.draw(m_gbufferShader, transform, 15);
+		}
+		else
+		{
+			m_boxShader.use();
+			m_boxShader.setUniform("u_camMatrix", camera.cameraMatrix);
+			m_boxShader.setUniform("u_time", m_config.fixedBoxPose ? 0.0f : static_cast<float>(time));
+			m_boxShader.setUniform("u_thickness", 0.001f * m_config.boxThicknessMm);
+			m_boxShader.setUniform("u_materialIndex", 15);
+			glBindVertexArray(m_proceduralVao);
+			glDrawArrays(GL_TRIANGLES, 0, 6 * 6);
+			glBindVertexArray(0);
+		}
 		glEnable(GL_CULL_FACE);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 	}
 
 	void PathTracerPipeline::drawVolumeBounds()
@@ -651,46 +754,40 @@ namespace renderer
 		if (!m_config.showVolumeBounds) return;
 		m_boundsShader.use();
 		m_boundsShader.setUniform("u_viewProjection", m_lastCameraMatrix);
-		glBindVertexArray(m_dynamicBoxVao);
-		auto draw = [&](const glm::vec3& minimum, float size, const glm::vec3& color) {
-			m_boundsShader.setUniform("u_minimum", minimum);
+		glBindVertexArray(m_proceduralVao);
+		auto draw = [&](const glm::vec3& center, const glm::mat3& rotation, float size, const glm::vec3& color) {
+			m_boundsShader.setUniform("u_center", center);
+			m_boundsShader.setUniform("u_rotation", rotation);
 			m_boundsShader.setUniform("u_size", size);
 			m_boundsShader.setUniform("u_color", color);
 			glDrawArrays(GL_LINES, 0, 8 * 3 * 2);
 		};
 		if (m_config.enableSdf3DTexture)
-			draw(m_config.sdfTextureOffset - 0.5f * m_config.sdfTextureWorldSize,
+			draw(m_config.sdfTextureOffset, glm::mat3(1.0f),
 				m_config.sdfTextureWorldSize, glm::vec3(0, 0.85f, 1));
 		if (m_hasDynamicField)
-			draw(dynamicBoxMin, dynamicBoxSize, glm::vec3(1, 0.35f, 0.85f));
+			draw(m_dynamicCenter, m_dynamicRotation, clampedDynamicGridSize(m_config.dynamicGridSize), glm::vec3(1, 0.35f, 0.85f));
 		glBindVertexArray(0);
 	}
 
-	void PathTracerPipeline::buildDynamicBoxField()
+	void PathTracerPipeline::buildDynamicField()
 	{
-		constexpr int resolution = 48;
-		if (!m_dynamicBoxVolumes[0].id)
-			for (auto& volume : m_dynamicBoxVolumes)
-				volume.allocate(resolution, resolution, resolution);
-		float empty = 1e6f;
-		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
-		glClearTexImage(m_dynamicBoxVolumes[0].id, 0, GL_RED, GL_FLOAT, &empty);
-		m_dynamicBoxSeed.use();
-		setDynamicBounds(m_dynamicBoxSeed);
-		m_gbufferWorldPos.bind(0);
-		glBindImageTexture(0, m_dynamicBoxVolumes[0].id, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
-		m_dynamicBoxSeed.dispatch((m_config.renderWidth + 7) / 8, (m_config.renderHeight + 7) / 8, 1);
-		m_dynamicBoxSeed.memoryBarrier();
-		m_dynamicBoxDistance.use();
-		setDynamicBounds(m_dynamicBoxDistance);
-		for (int axis = 0; axis < 3; ++axis)
-		{
-			m_dynamicBoxVolumes[axis % 2].bindImage(0, GL_READ_ONLY);
-			m_dynamicBoxVolumes[1 - axis % 2].bindImage(1, GL_WRITE_ONLY);
-			m_dynamicBoxDistance.setUniform("u_axis", axis);
-			m_dynamicBoxDistance.dispatch(resolution / 4, resolution / 4, resolution / 4);
-			m_dynamicBoxDistance.memoryBarrier();
-		}
+		if (!m_dynamicDistance.id)
+			m_dynamicSdfGenerator.init(m_shadersRoot);
+
+		SdfGenerationParams params;
+		params.resolution = clampedDynamicResolution(m_config.dynamicResolution);
+		params.worldSize = clampedDynamicGridSize(m_config.dynamicGridSize);
+		params.worldOffset = glm::vec3(0);
+		params.unsignedDistance = false;
+		params.shellHalfThicknessVoxels = 0.9f;
+		params.jfaVariant = JfaVariant::JfaPlus1;
+		params.accumulateSeeds = m_config.dynamicObject == DynamicObject::MovingMesh;
+		params.resetAccumulatedSeeds = m_clearDynamicSeeds;
+		const CameraSurfaceCapture capture{m_gbufferWorldPos, m_gbufferNormal, m_depthTexture,
+			m_gbufferMaterial, 15, m_dynamicCenter, glm::transpose(m_dynamicRotation)};
+		m_dynamicSdfGenerator.generateFromCapture(capture, params, m_dynamicDistance);
+		m_clearDynamicSeeds = false;
 	}
 
 	void PathTracerPipeline::render(const Camera& camera, double time, const SceneDefinition& scene, int displayWidth, int displayHeight)
@@ -720,8 +817,8 @@ namespace renderer
 		m_lastCameraMatrix = camera.cameraMatrix;
 		if ((m_config.enableSdf3DTexture || m_config.enableSliceInspector)
 			&& m_currentSceneIndex >= 0
-			&& m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
-			&& (m_scene3DTextures[m_currentSceneIndex].id == 0 || m_config.realtimeSdfUpdate))
+			&& m_currentSceneIndex < static_cast<int>(m_sceneVolumes.size())
+			&& (m_sceneVolumes[m_currentSceneIndex].distance.id == 0 || m_config.realtimeSdfUpdate))
 		{
 			generateSdf3DTexture(m_currentSceneIndex);
 		}
@@ -766,30 +863,65 @@ namespace renderer
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
 
-		if (scene.renderMonkeyMesh && m_monkeyModel.isValid())
-		{
-			m_gbufferShader.use();
-			m_gbufferShader.setUniform("u_camMatrix", camera.cameraMatrix);
-			m_monkeyModel.draw(m_gbufferShader, scene.monkeyTransform, scene.monkeyMaterialIndex);
-		}
-
 		// -------------------------------------------------------------
 		// 2. Primary Path Tracing Pass
 		// -------------------------------------------------------------
-		m_hasDynamicField = scene.animatedDynamicBox;
+		const bool meshView = m_config.showTexturedMeshes;
+		if (meshView != m_previousMeshView)
+		{
+			resetAccumulation(true);
+			m_previousMeshView = meshView;
+		}
+		if (meshView && m_sdfModel.isValid())
+			drawStaticModel(camera, true);
+		const bool useDynamicMesh = m_config.dynamicObject == DynamicObject::MovingMesh;
+		m_hasDynamicField = scene.hasDynamicObject && (!useDynamicMesh || m_dynamicModel.isValid());
+		const bool useReference = m_hasDynamicField && useDynamicMesh && m_config.useDynamicReference;
+		const glm::vec3 previousCenter = m_dynamicCenter;
+		const glm::mat3 previousRotation = m_dynamicRotation;
 		if (m_hasDynamicField)
 		{
-			drawDynamicBox(camera, time);
-			if (queries)
+			const int dynamicRes = clampedDynamicResolution(m_config.dynamicResolution);
+			const float dynamicSize = clampedDynamicGridSize(m_config.dynamicGridSize);
+			if (dynamicRes != m_builtDynamicResolution || dynamicSize != m_builtDynamicGridSize)
 			{
-				queries->builtDynamicBox = true;
-				glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicBoxStart], GL_TIMESTAMP);
+				if (m_builtDynamicResolution != 0)
+				{
+					m_clearDynamicSeeds = true;
+					resetAccumulation(true);
+				}
+				m_builtDynamicResolution = dynamicRes;
+				m_builtDynamicGridSize = dynamicSize;
 			}
-			buildDynamicBoxField();
-			if (queries)
-				glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicBoxEnd], GL_TIMESTAMP);
-			m_frameCounter = 0;
-			m_historyValid = false;
+			updateDynamicPose(time);
+			const bool inView = gridInView(camera.cameraMatrix, m_dynamicCenter, m_dynamicRotation, dynamicSize);
+			if (inView)
+			{
+				if (!meshView && m_config.enableSdf3DTexture && m_sdfModel.isValid())
+					drawStaticModel(camera, false);
+				drawDynamicObject(camera, time);
+			}
+			if (m_clearDynamicSeeds || useReference != m_previousDynamicReference)
+				resetAccumulation(true);
+			m_previousDynamicReference = useReference;
+			const bool referenceStale = useReference
+				&& (!m_dynamicReference.id
+					|| m_dynamicReferenceResolution != dynamicRes
+					|| m_dynamicReferenceGridSize != dynamicSize);
+			const bool updateCapture = inView || m_clearDynamicSeeds || !useDynamicMesh;
+			if (updateCapture || referenceStale)
+			{
+				if (queries)
+				{
+					queries->builtDynamicField = true;
+					glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicFieldStart], GL_TIMESTAMP);
+				}
+				if (updateCapture) buildDynamicField();
+				if (useReference) buildDynamicReference();
+				if (queries)
+					glQueryCounter(queries->timestamps[FrameGpuQueries::DynamicFieldEnd], GL_TIMESTAMP);
+			}
+			if (!usePrimary) m_frameCounter = 0;
 		}
 		bool shouldRaymarch = usePrimary || (m_frameCounter < m_config.maxAccumulationFrames);
 
@@ -827,11 +959,14 @@ namespace renderer
 			m_sdfShader.setUniform("u_resolution", glm::vec2(m_config.renderWidth, m_config.renderHeight));
 			m_sdfShader.setUniform("u_near", camera.nearPlane);
 			m_sdfShader.setUniform("u_far", camera.farPlane);
-			m_sdfShader.setUniform("u_hasDynamicBox", scene.animatedDynamicBox ? 1 : 0);
-			if (scene.animatedDynamicBox)
+			m_sdfShader.setUniform("u_meshView", meshView ? 1 : 0);
+			m_sdfShader.setUniform("u_hasDynamicField", m_hasDynamicField ? 1 : 0);
+			if (m_hasDynamicField)
 			{
-				setDynamicBounds(m_sdfShader);
-				m_dynamicBoxVolumes[1].bind(10);
+				setDynamicBounds(m_sdfShader, m_dynamicCenter, m_dynamicRotation, clampedDynamicGridSize(m_config.dynamicGridSize));
+				const Texture3D& field = useReference ? m_dynamicReference : m_dynamicDistance;
+				field.bind(10);
+				m_dynamicDistance.bind(11);
 			}
 			m_sdfShader.setUniform("u_frameCounter", m_frameCounter);
 			m_sdfShader.setUniform("u_rayBounces", m_config.rayBounces);
@@ -845,7 +980,8 @@ namespace renderer
 			m_sdfShader.setUniform("u_sdfTextureOffset", m_config.sdfTextureOffset);
 			m_sdfShader.setUniform("u_sdfTextureMaterialId", m_config.sdfTextureMaterialId);
 			m_sdfShader.setUniform("u_unsignedMeshDistance", m_config.unsignedMeshDistance ? 1 : 0);
-			m_sdfShader.setUniform("u_approximateMeshDistance", m_config.sdfMethod != SdfMethod::ExactBaseline ? 1 : 0);
+			m_sdfShader.setUniform("u_approximateMeshDistance",
+				(m_config.sdfMethod != SdfMethod::ExactBaseline || m_config.unsignedMeshDistance) ? 1 : 0);
 
 			// Materials
 			for (int i = 0; i < 16; ++i)
@@ -894,9 +1030,10 @@ namespace renderer
 			m_depthTexture.bind(1);
 
 			m_sdfShader.setUniform("t_sdfTexture3D", 2);
-			if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size()))
+			if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_sceneVolumes.size()))
 			{
-				m_scene3DTextures[m_currentSceneIndex].bind(2);
+				const MeshVolume& volume = m_sceneVolumes[m_currentSceneIndex];
+				volume.distance.bind(2);
 			}
 
 			m_sdfShader.setUniform("t_gbufferAlbedo", 3);
@@ -964,8 +1101,21 @@ namespace renderer
 			float maxHistory = std::max(float(std::max(m_config.maxHistoryFrames, 1)),
 				std::ceil(1.0f / std::max(m_config.temporalAlpha, 1e-3f)));
 			m_temporalShader.setUniform("u_maxHistory", maxHistory);
+			const bool dynamicMoved = m_hasDynamicField
+				&& (m_dynamicCenter != previousCenter || m_dynamicRotation != previousRotation);
+			glm::mat4 dynamicPrevFromCurr(1.0f);
+			if (dynamicMoved)
+			{
+				const glm::mat4 prevPose = glm::translate(glm::mat4(1.0f), previousCenter) * glm::mat4(previousRotation);
+				const glm::mat4 invCurrPose = glm::mat4(glm::transpose(m_dynamicRotation))
+					* glm::translate(glm::mat4(1.0f), -m_dynamicCenter);
+				dynamicPrevFromCurr = prevPose * invCurrPose;
+			}
+			m_temporalShader.setUniform("u_dynamicPrevFromCurr", dynamicPrevFromCurr);
+			m_temporalShader.setUniform("u_dynamicMoved", dynamicMoved ? 1 : 0);
+			m_temporalShader.setUniform("u_rejectDynamic", m_hasDynamicField && !useDynamicMesh && !m_config.fixedBoxPose ? 1 : 0);
 			m_temporalShader.setUniform("u_cameraMoved", cameraMoved ? 1 : 0);
-			m_temporalShader.setUniform("u_historyFixFrames", float(std::max(m_config.historyFixFrames, 0)));
+			m_temporalShader.setUniform("u_historyFixFrames", m_config.atrousIterations > 0 ? float(std::max(m_config.historyFixFrames, 0)) : 0.0f);
 
 			// Current frame inputs
 			m_temporalShader.setUniform("t_currIllum", 0);
@@ -994,7 +1144,7 @@ namespace renderer
 			m_quad.draw();
 			glEnable(GL_DEPTH_TEST);
 
-			// --- Pass 3.2: Multi-Scale À-Trous Wavelet Filter Passes ---
+			// --- Pass 3.2: Multi-Scale Ãƒâ‚¬-Trous Wavelet Filter Passes ---
 			finalFilteredTexture = &m_temporalIllum[m_temporalIdx];
 
 			int iterations = std::clamp(m_config.atrousIterations, 0, 5);
@@ -1087,17 +1237,17 @@ namespace renderer
 
 		m_resolveShader.setUniform("t_sdfTexture3D", 4);
 		m_resolveShader.setUniform("t_refSdfTexture3D", 5);
-		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
-			&& m_scene3DTextures[m_currentSceneIndex].id != 0)
+		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_sceneVolumes.size())
+			&& m_sceneVolumes[m_currentSceneIndex].distance.id != 0)
 		{
-			m_scene3DTextures[m_currentSceneIndex].bind(4);
+			m_sceneVolumes[m_currentSceneIndex].distance.bind(4);
 			if (m_referenceSdfTexture.id != 0)
 			{
 				m_referenceSdfTexture.bind(5);
 			}
 			else
 			{
-				m_scene3DTextures[m_currentSceneIndex].bind(5);
+				m_sceneVolumes[m_currentSceneIndex].distance.bind(5);
 			}
 		}
 
@@ -1217,17 +1367,17 @@ namespace renderer
 
 		m_resolveShader.setUniform("t_sdfTexture3D", 4);
 		m_resolveShader.setUniform("t_refSdfTexture3D", 5);
-		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_scene3DTextures.size())
-			&& m_scene3DTextures[m_currentSceneIndex].id != 0)
+		if (m_currentSceneIndex >= 0 && m_currentSceneIndex < static_cast<int>(m_sceneVolumes.size())
+			&& m_sceneVolumes[m_currentSceneIndex].distance.id != 0)
 		{
-			m_scene3DTextures[m_currentSceneIndex].bind(4);
+			m_sceneVolumes[m_currentSceneIndex].distance.bind(4);
 			if (m_referenceSdfTexture.id != 0)
 			{
 				m_referenceSdfTexture.bind(5);
 			}
 			else
 			{
-				m_scene3DTextures[m_currentSceneIndex].bind(5);
+				m_sceneVolumes[m_currentSceneIndex].distance.bind(5);
 			}
 		}
 

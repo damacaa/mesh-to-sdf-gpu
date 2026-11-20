@@ -9,6 +9,7 @@ layout(rgba32f, binding = 3) uniform coherent image3D u_persistentSeedPosTex;
 layout(rgba32f, binding = 4) uniform coherent image3D u_persistentSeedNormTex;
 
 #include "sdf_common.glsl"
+#include "../common/capture_normal.glsl"
 
 layout(std430, binding = 0) readonly buffer TriangleBuffer
 {
@@ -25,6 +26,8 @@ uniform uint u_triangleCount;
 uniform int u_resolveMode; // 0 = Triangle SSBO, 1 = G-Buffer Atlas
 uniform ivec2 u_atlasSize;
 uniform int u_accumulateSeeds;
+uniform vec3 u_captureOrigin;
+uniform mat3 u_captureInvRotation;
 
 void main()
 {
@@ -75,29 +78,21 @@ void main()
 		vec3 q = closestPointOnTriangle(voxelPos, tri.v0.xyz, tri.v1.xyz, tri.v2.xyz, bary);
 
 		vec3 interpN = bary.x * tri.n0.xyz + bary.y * tri.n1.xyz + bary.z * tri.n2.xyz;
-		float nLen = length(interpN);
-		if (nLen < 1e-6)
-		{
-			vec3 faceN = cross(tri.v1.xyz - tri.v0.xyz, tri.v2.xyz - tri.v0.xyz);
-			float faceLen = length(faceN);
-			interpN = (faceLen > 1e-6) ? (faceN / faceLen) : vec3(0.0, 1.0, 0.0);
-		}
-		else
-		{
-			interpN /= nLen;
-		}
+		vec3 normal = (dot(interpN, interpN) > 1e-12)
+			? normalize(interpN)
+			: triangleSurfaceNormal(tri.v0.xyz, tri.v1.xyz, tri.v2.xyz, interpN);
 
 		resolvedPos = vec4(q, 1.0);
-		resolvedNorm = vec4(interpN, tri.n0.w);
+		resolvedNorm = vec4(normal, tri.n0.w);
 	}
 	else
 	{
+		idx = packedSeed & ((1u << captureIndexBits(u_atlasSize)) - 1u);
 		ivec2 px = ivec2(int(idx) % u_atlasSize.x, int(idx) / u_atlasSize.x);
-		vec3 worldPos = texelFetch(t_gbufferWorldPos, px, 0).xyz;
+		vec4 observation = texelFetch(t_gbufferWorldPos, px, 0);
+		vec3 worldPos = u_captureInvRotation * (observation.xyz - u_captureOrigin);
 		vec4 rawNormalSample = texelFetch(t_gbufferNormal, px, 0);
-		vec3 rawNormal = rawNormalSample.xyz;
-		float nLen = length(rawNormal);
-		vec3 safeNormal = (nLen > 1e-6) ? (rawNormal / nLen) : vec3(0.0, 1.0, 0.0);
+		vec3 safeNormal = normalize(u_captureInvRotation * unpackCaptureNormal(observation.w));
 
 		resolvedPos = vec4(worldPos, 1.0);
 		resolvedNorm = vec4(safeNormal, rawNormalSample.w);

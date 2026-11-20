@@ -1,2 +1,3 @@
-uniform vec3 dynamicBoxMin;
-uniform float dynamicBoxSize;
+uniform vec3 dynamicGridCenter;
+uniform mat3 dynamicGridInvRot;
+uniform float dynamicGridSize;

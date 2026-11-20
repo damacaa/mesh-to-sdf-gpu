@@ -3,13 +3,13 @@
 layout(location = 0) out vec4 out_integratedIllum; // RGB = integrated illumination, A = variance
 layout(location = 1) out vec4 out_moments;         // R = 1st moment, G = 2nd moment, B = history length, A = 1.0
 layout(location = 2) out vec4 out_historyNormal;   // RGB = normal, A = hit mask
-layout(location = 3) out vec4 out_historyWorldPos; // RGB = world position, A = 1.0
+layout(location = 3) out vec4 out_historyWorldPos; // RGB = world position, A = surface class
 
 in vec2 v_texCoord;
 
 uniform sampler2D t_currIllum;     // RGB = raw illumination, A = linear depth
 uniform sampler2D t_currNormal;    // RGB = world normal, A = hit mask
-uniform sampler2D t_currWorldPos;  // RGB = world position, A = 1.0
+uniform sampler2D t_currWorldPos;  // RGB = world position, A = surface class
 
 uniform sampler2D t_prevIllum;     // Previous first spatial result + variance
 uniform sampler2D t_prevMoments;   // Previous moments (1st, 2nd, history length)
@@ -21,6 +21,9 @@ uniform vec2 u_resolution;
 uniform float u_alpha;             // Temporal blend weight (default ~0.15)
 uniform float u_maxHistory;        // Max history frames (default ~32.0)
 uniform int u_resetHistory;        // 1 rejects all previous samples
+uniform mat4 u_dynamicPrevFromCurr;
+uniform int u_dynamicMoved;
+uniform int u_rejectDynamic;
 uniform int u_cameraMoved;         // 1 if camera moved this frame, 0 if static
 uniform float u_historyFixFrames;  // Pixels with a shorter history get a spatial prefilter (0 = off)
 
@@ -40,11 +43,17 @@ void main()
 	vec4 currNormalSample = texture(t_currNormal, v_texCoord);
 	vec3 currNormal = currNormalSample.rgb;
 	float currHit = currNormalSample.a;
-	vec3 currWorldPos = texture(t_currWorldPos, v_texCoord).rgb;
+	vec4 surface = texelFetch(t_currWorldPos, ivec2(gl_FragCoord.xy), 0);
+	vec3 currWorldPos = surface.xyz;
+	bool dynamicSurface = surface.w > 1.5;
+	bool dynamicMoved = dynamicSurface && (u_dynamicMoved != 0);
+	vec3 prevWorldPos = dynamicMoved ? (u_dynamicPrevFromCurr * vec4(currWorldPos, 1.0)).xyz : currWorldPos;
+	vec3 prevCheckNormal = dynamicMoved ? normalize(mat3(u_dynamicPrevFromCurr) * currNormal) : currNormal;
+	bool reproject = u_cameraMoved != 0 || dynamicMoved;
 
 	// Always write current geometry to history buffers for next frame
 	out_historyNormal = currNormalSample;
-	out_historyWorldPos = vec4(currWorldPos, 1.0);
+	out_historyWorldPos = surface;
 
 	// If background / sky hit, no temporal reprojection is performed
 	if (currHit < 0.5)
@@ -56,13 +65,13 @@ void main()
 	}
 
 	vec2 prevUV;
-	if (u_cameraMoved == 0)
+	if (!reproject)
 	{
 		prevUV = v_texCoord;
 	}
 	else
 	{
-		vec4 prevClip = u_prevViewProj * vec4(currWorldPos, 1.0);
+		vec4 prevClip = u_prevViewProj * vec4(prevWorldPos, 1.0);
 		prevUV = (prevClip.w > 1e-5) ? (prevClip.xy / prevClip.w * 0.5 + 0.5) : vec2(-1.0);
 	}
 
@@ -91,9 +100,9 @@ void main()
 	float prevHistorySum = 0.0;
 	float weightSum = 0.0;
 
-	for (int i = 0; i < (u_cameraMoved == 0 ? 1 : 4) && inside && u_resetHistory == 0; ++i)
+	for (int i = 0; i < (reproject ? 4 : 1) && inside && u_resetHistory == 0 && !(dynamicSurface && u_rejectDynamic != 0); ++i)
 	{
-		ivec2 tapCoord = (u_cameraMoved == 0) ? ivec2(gl_FragCoord.xy) : (p0 + offsets[i]);
+		ivec2 tapCoord = !reproject ? ivec2(gl_FragCoord.xy) : (p0 + offsets[i]);
 		if (tapCoord.x < 0 || tapCoord.x >= int(u_resolution.x) ||
 		    tapCoord.y < 0 || tapCoord.y >= int(u_resolution.y))
 		{
@@ -107,16 +116,18 @@ void main()
 		}
 
 		vec3 tapNormal = tapNormalSample.rgb;
-		vec3 tapPos = texelFetch(t_prevWorldPos, tapCoord, 0).rgb;
+		vec4 previousSurface = texelFetch(t_prevWorldPos, tapCoord, 0);
+		if (previousSurface.w != surface.w) continue;
+		vec3 tapPos = previousSurface.xyz;
 
 		// Bilateral rejection: discard taps belonging to different geometry (e.g. foreground emissive object)
-		bool tapNormalValid = dot(currNormal, tapNormal) > 0.75;
-		float tapPlaneDist = abs(dot(currNormal, currWorldPos - tapPos));
+		bool tapNormalValid = dot(prevCheckNormal, tapNormal) > 0.75;
+		float tapPlaneDist = abs(dot(prevCheckNormal, prevWorldPos - tapPos));
 		bool tapDepthValid = (tapPlaneDist < 0.15);
 
 		if (tapNormalValid && tapDepthValid)
 		{
-			float tapW = (u_cameraMoved == 0) ? 1.0 : w[i];
+			float tapW = !reproject ? 1.0 : w[i];
 			vec4 tapIllum = texelFetch(t_prevIllum, tapCoord, 0);
 			vec4 tapMoments = texelFetch(t_prevMoments, tapCoord, 0);
 

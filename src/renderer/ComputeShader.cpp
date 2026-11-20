@@ -267,6 +267,15 @@ namespace renderer
 		}
 	}
 
+	void ComputeShader::setUniform(const std::string& name, const glm::mat3& value) const
+	{
+		GLint loc = getUniformLocation(name);
+		if (loc != -1)
+		{
+			glUniformMatrix3fv(loc, 1, GL_FALSE, glm::value_ptr(value));
+		}
+	}
+
 	void ComputeShader::setUniform(const std::string& name, const glm::mat4& value) const
 	{
 		GLint loc = getUniformLocation(name);

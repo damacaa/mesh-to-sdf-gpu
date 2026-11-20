@@ -6,6 +6,10 @@ layout(r32ui, binding = 2) uniform uimage3D u_seedAtomics;
 
 uniform sampler2D t_gbufferWorldPos;
 uniform sampler2D t_gbufferDepth;
+layout(binding = 2) uniform isampler2D t_materials;
+uniform int u_materialFilter;
+uniform vec3 u_captureOrigin;
+uniform mat3 u_captureInvRotation;
 
 #include "sdf_common.glsl"
 
@@ -29,7 +33,9 @@ void main()
 		return;
 	}
 
-	vec3 worldPos = posSample.xyz;
+	if (u_materialFilter >= 0 && texelFetch(t_materials, px, 0).r != u_materialFilter)
+		return;
+	vec3 worldPos = u_captureInvRotation * (posSample.xyz - u_captureOrigin);
 	float voxelSize = u_worldSize / float(u_resolution.x);
 	vec3 gridOrigin = u_worldOffset - vec3(u_worldSize * 0.5);
 
@@ -41,13 +47,10 @@ void main()
 
 	vec3 voxelCenter = voxelToWorld(voxelCoord, u_resolution, u_worldSize, u_worldOffset);
 	float dist = length(worldPos - voxelCenter);
-	uint quantizedDist = uint(clamp(dist / (voxelSize * 2.0), 0.0, 1.0) * 4095.0);
+	uint indexBits = captureIndexBits(u_atlasSize);
+	uint maxRank = min(0xFFFFu, (0xFFFFFFFFu >> indexBits) - 1u);
+	uint quantizedDist = uint(clamp(dist / voxelSize, 0.0, 1.0) * float(maxRank));
 	uint pixelIndex = uint(px.y * u_atlasSize.x + px.x);
-	if (pixelIndex >= 0xFFFFFu)
-	{
-		return;
-	}
-
-	uint packedSeed = (quantizedDist << 20u) | (pixelIndex & 0xFFFFFu);
+	uint packedSeed = (quantizedDist << indexBits) | pixelIndex;
 	imageAtomicMin(u_seedAtomics, voxelCoord, packedSeed);
 }

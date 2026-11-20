@@ -109,3 +109,16 @@ float triangleSolidAngle(vec3 p, vec3 a, vec3 b, vec3 c)
 	}
 	return 2.0 * atan(num, den);
 }
+
+// Reserve enough bits for every pixel. The remaining high bits rank candidate distances.
+uint captureIndexBits(ivec2 size)
+{
+	return uint(findMSB(uint(size.x) * uint(size.y) - 1u) + 1);
+}
+
+vec3 triangleSurfaceNormal(vec3 a, vec3 b, vec3 c, vec3 fallback)
+{
+	vec3 face = cross(b - a, c - a);
+	if (dot(face, face) > 1e-20) return normalize(face);
+	return dot(fallback, fallback) > 1e-12 ? normalize(fallback) : vec3(0, 1, 0);
+}

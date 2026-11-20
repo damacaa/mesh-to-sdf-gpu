@@ -246,13 +246,13 @@ float sample3DTextureSdf(vec3 p)
 	float distToBox = length(max(dBox, 0.0));
 
 	vec3 uvw = (q / u_sdfTextureWorldSize) + 0.5;
-	float texDist = texture(t_sdfTexture3D, clamp(uvw, 0.0, 1.0)).r;
+	float texDist = textureLod(t_sdfTexture3D, clamp(uvw, 0.0, 1.0), 0.0).r;
 
 	if (u_unsignedMeshDistance == 1)
 	{
-		// Allow for the interpolation error at a surface between voxel centers.
+		// Cover the <= 0.5 voxel trilinear maximum of an unsigned distance field on any 2D surface.
 		float voxelSize = u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x);
-		texDist -= 0.9 * voxelSize;
+		texDist -= 0.55 * voxelSize;
 	}
 
 	if (distToBox > 0.0)
@@ -262,6 +262,7 @@ float sample3DTextureSdf(vec3 p)
 	return texDist;
 }
 
+bool sampleStaticVolume = true;
 vec3 sceneSdf(vec3 p)
 {
 	float minDist = u_far;
@@ -271,7 +272,7 @@ vec3 sceneSdf(vec3 p)
 	// Injected shape SDF code
 	#include "shapes"
 
-	if (u_enableSdf3DTexture == 1)
+	if (sampleStaticVolume && u_enableSdf3DTexture == 1)
 	{
 		float texDist = sample3DTextureSdf(p);
 		if (texDist < minDist)
@@ -324,7 +325,7 @@ struct RayHit
 
 RayHit rayMarch(vec3 ro, vec3 rd, float startDistance, float maxDistance, bool occlusionOnly)
 {
-	bool useVolume = u_enableSdf3DTexture == 1;
+	bool useVolume = sampleStaticVolume && u_enableSdf3DTexture == 1;
 	float voxelSize = useVolume ? u_sdfTextureWorldSize / float(textureSize(t_sdfTexture3D, 0).x) : 0.0;
 	float traveled = startDistance;
 	float previousT = traveled;
@@ -376,8 +377,8 @@ RayHit rayMarch(vec3 ro, vec3 rd, float startDistance, float maxDistance, bool o
 			vec3 q = abs(p - u_sdfTextureOffset);
 			if (all(lessThanEqual(q, vec3(u_sdfTextureWorldSize * 0.5))))
 			{
-				// Limit the advance where the grid can overestimate the distance.
-				advance = min(advance * 0.5, 2.0 * voxelSize);
+				// Keep a safety margin where approximate grid distances can slightly overestimate.
+				advance *= 0.85;
 			}
 		}
 		previousT = traveled;
@@ -430,7 +431,7 @@ float getSurfaceBias(vec3 p)
 vec3 getNormal(vec3 p)
 {
 	vec3 scene = sceneSdf(p);
-	if (u_enableSdf3DTexture == 1 && int(scene.y) == u_sdfTextureMaterialId)
+	if (sampleStaticVolume && u_enableSdf3DTexture == 1 && int(scene.y) == u_sdfTextureMaterialId)
 	{
 		return get3DTextureNormal(p);
 	}
@@ -475,31 +476,73 @@ vec3 getFogColor(vec3 dir)
 }
 
 #include "../common/dynamic_grid.glsl"
-layout(binding = 10) uniform sampler3D t_dynamicBox;
-uniform int u_hasDynamicBox;
+layout(binding = 10) uniform sampler3D t_dynamicField;
+layout(binding = 11) uniform sampler3D t_dynamicCapture;
+uniform int u_hasDynamicField;
+uniform int u_meshView;
 
-float dynamicBoxHit(vec3 origin, vec3 direction, float limit)
+float dynamicFieldHit(sampler3D field, vec3 origin, vec3 direction, float limit, bool occlusionOnly)
 {
-	vec3 safeDir = mix(direction, vec3(1e-8), lessThan(abs(direction), vec3(1e-8)));
-	vec3 a = (dynamicBoxMin - origin) / safeDir;
-	vec3 b = (dynamicBoxMin + dynamicBoxSize - origin) / safeDir;
+	vec3 localOrigin = dynamicGridInvRot * (origin - dynamicGridCenter);
+	vec3 localDir = dynamicGridInvRot * direction;
+	vec3 safeDir = mix(localDir, vec3(1e-8), lessThan(abs(localDir), vec3(1e-8)));
+	vec3 halfExtent = vec3(0.5 * dynamicGridSize);
+	vec3 a = (-halfExtent - localOrigin) / safeDir;
+	vec3 b = (halfExtent - localOrigin) / safeDir;
 	vec3 entry = min(a, b), leave = max(a, b);
 	float t = max(0.0, max(entry.x, max(entry.y, entry.z)));
 	float end = min(limit, min(leave.x, min(leave.y, leave.z)));
-	float voxel = dynamicBoxSize / float(textureSize(t_dynamicBox, 0).x);
+	if (t > end) return -1.0;
+
+	float voxel = dynamicGridSize / float(textureSize(field, 0).x);
+	float prevT = t;
+	float prevD = 0.0;
 	for (int i = 0; i < 192 && t <= end; ++i)
 	{
-		vec3 uvw = (origin + direction * t - dynamicBoxMin) / dynamicBoxSize;
-		float d = textureLod(t_dynamicBox, uvw, 0.0).r;
-		ivec3 size = textureSize(t_dynamicBox, 0);
-		ivec3 cell = clamp(ivec3(uvw * size), ivec3(0), size - 1);
-		if (d <= voxel || texelFetch(t_dynamicBox, cell, 0).r == 0.0) return t;
-		t += max(0.25 * voxel, d - 1.7321 * voxel);
+		vec3 uvw = (localOrigin + localDir * t) / dynamicGridSize + 0.5;
+		float d = textureLod(field, uvw, 0.0).r;
+		if (i > 0 && (d < 0.0) != (prevD < 0.0))
+		{
+			if (occlusionOnly) return prevT;
+			float lo = prevT;
+			float hi = t;
+			for (int j = 0; j < 8; ++j)
+			{
+				float mid = 0.5 * (lo + hi);
+				vec3 midUvw = (localOrigin + localDir * mid) / dynamicGridSize + 0.5;
+				float midD = textureLod(field, midUvw, 0.0).r;
+				if ((midD < 0.0) == (prevD < 0.0)) lo = mid;
+				else hi = mid;
+			}
+			return 0.5 * (lo + hi);
+		}
+		if (abs(d) <= 0.01 * voxel) return t;
+		if (i == 0 && d < 0.0) return t;
+		prevT = t;
+		prevD = d;
+		t += clamp(abs(d) * 0.75, 0.05 * voxel, 2.0 * voxel);
 	}
 	return -1.0;
 }
 
-vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, inout uint state)
+vec3 dynamicFieldNormal(sampler3D field, vec3 p, vec3 direction)
+{
+	vec3 uvw = (dynamicGridInvRot * (p - dynamicGridCenter)) / dynamicGridSize + 0.5;
+	vec3 h = 0.5 / vec3(textureSize(field, 0));
+	vec3 gradient;
+	for (int axis = 0; axis < 3; ++axis)
+	{
+		vec3 offset = vec3(0);
+		offset[axis] = h[axis];
+		gradient[axis] = textureLod(field, uvw + offset, 0).r - textureLod(field, uvw - offset, 0).r;
+	}
+	vec3 n = dot(gradient, gradient) > 1e-8
+		? normalize(transpose(dynamicGridInvRot) * gradient)
+		: -direction;
+	return faceforward(n, direction, n);
+}
+
+vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 firstN, vec2 surfaceParams, inout uint state)
 {
 #ifdef GEOMETRY_PREVIEW
 	float facing = max(dot(firstN, -rd), 0.0);
@@ -513,8 +556,8 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 
 	vec3 currentRd = rd;
 	vec3 surfaceNormal = firstN;
-	float roughness = u_materials[currentMatId].roughness;
-	float f0 = u_materials[currentMatId].metallic;
+	float roughness = surfaceParams.x >= 0.0 ? surfaceParams.x : u_materials[currentMatId].roughness;
+	float f0 = surfaceParams.x >= 0.0 ? surfaceParams.y : u_materials[currentMatId].metallic;
 
 	float fresnelPower = 5.0;
 	float specExponent = 2000.0;
@@ -610,7 +653,7 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 			RayHit shadowHit = rayMarch(rayOrigin, L, startDistance, min(lightDist, u_far), true);
 			if (!shadowHit.hit || shadowHit.dist >= lightDist)
 			{
-				if (u_hasDynamicBox == 0 || currentMatId == 15 || dynamicBoxHit(p + N * RAYMARCH_EPSILON, L, lightDist) < 0.0)
+				if (u_hasDynamicField == 0 || currentMatId == 15 || dynamicFieldHit(t_dynamicField, p + N * RAYMARCH_EPSILON, L, lightDist, true) < 0.0)
 					directLighting += contribution;
 			}
 		}
@@ -648,10 +691,10 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 		float d = bounceHit.dist;
 		vec3 dynamicOrigin = p + N * RAYMARCH_EPSILON;
 		float dynamicT = -1.0;
-		if (u_hasDynamicBox != 0 && currentMatId != 15)
+		if (u_hasDynamicField != 0 && currentMatId != 15)
 		{
 			float limit = bounceHit.hit ? dot(rayOrigin + d * bounceDir - dynamicOrigin, bounceDir) : u_far;
-			dynamicT = dynamicBoxHit(dynamicOrigin, bounceDir, limit);
+			dynamicT = dynamicFieldHit(t_dynamicField, dynamicOrigin, bounceDir, limit, false);
 		}
 		bool hitDynamic = dynamicT >= 0.0;
 		if (hitDynamic) d = dynamicT;
@@ -691,18 +734,7 @@ vec3 shadeSurface(vec3 p, vec3 rd, vec3 initialColor, int materialId, vec3 first
 			if (hitDynamic)
 			{
 				p = dynamicOrigin + d * bounceDir;
-				vec3 uvw = (p - dynamicBoxMin) / dynamicBoxSize;
-				vec3 h = 1.0 / vec3(textureSize(t_dynamicBox, 0));
-				vec3 gradient;
-				for (int axis = 0; axis < 3; ++axis)
-				{
-					vec3 offset = vec3(0);
-					offset[axis] = h[axis];
-					gradient[axis] = textureLod(t_dynamicBox, uvw + offset, 0).r
-						- textureLod(t_dynamicBox, uvw - offset, 0).r;
-				}
-				surfaceNormal = dot(gradient, gradient) > 1e-8 ? normalize(gradient) : -bounceDir;
-				surfaceNormal = faceforward(surfaceNormal, bounceDir, surfaceNormal);
+				surfaceNormal = dynamicFieldNormal(t_dynamicField, p, bounceDir);
 				currentMatId = 15;
 				currentAlbedo = getMaterial(p, currentMatId);
 				roughness = u_materials[currentMatId].roughness;
@@ -744,6 +776,7 @@ struct HitData
 	vec3 normal;
 	vec3 worldPos;
 	float linearDepth;
+	bool dynamicSurface;
 	bool hit;
 };
 
@@ -758,7 +791,17 @@ HitData render(in vec2 uv, inout uint state)
 	float meshDepthSample = texelFetch(t_depthTexture, pixelCoord, 0).r;
 	float meshDepthLinear = linearizeGBufferDepth(meshDepthSample);
 
+	sampleStaticVolume = u_meshView == 0;
 	RayHit sdfHit = rayMarch(ro, rd, u_near, u_far, false);
+	float dynamicT = -1.0;
+	if (u_meshView == 0 && u_hasDynamicField != 0)
+	{
+		float limit = sdfHit.hit ? sdfHit.dist : u_far;
+		float t = dynamicFieldHit(t_dynamicCapture, ro + rd * u_near, rd, limit - u_near, false);
+		if (t >= 0.0) dynamicT = t + u_near;
+	}
+	bool dynamicPrimary = dynamicT >= 0.0;
+	if (dynamicPrimary) sdfHit = RayHit(dynamicT, true);
 	float object = sdfHit.dist;
 	bool sdfValid = sdfHit.hit && (object < u_far);
 
@@ -771,7 +814,7 @@ HitData render(in vec2 uv, inout uint state)
 	float z_n = (u_far + u_near - (2.0 * u_near * u_far) / z_e) / (u_far - u_near);
 	float sdfDepthNDC = sdfValid ? ((z_n + 1.0) * 0.5) : 1.0;
 
-	bool meshValid = meshDepthSample < 1.0 - 0.0001 && texelFetch(t_gbufferWorldPos, pixelCoord, 0).w > 0.5;
+	bool meshValid = u_meshView != 0 && meshDepthSample < 1.0 && texelFetch(t_gbufferWorldPos, pixelCoord, 0).w > 0.5;
 	bool meshInFront = meshValid && (!sdfValid || meshDepthLinear < minDepth);
 
 	// Atmospheric distance fog: keep foreground and midground clear, fade smoothly into horizon in the distance
@@ -782,18 +825,23 @@ HitData render(in vec2 uv, inout uint state)
 	vec3 fogColor = getFogColor(rd);
 
 	HitData hit;
+	hit.dynamicSurface = false;
 
 	if (meshInFront)
 	{
 		vec3 meshAlbedo = texelFetch(t_gbufferAlbedo, pixelCoord, 0).rgb;
 		vec3 meshWorldPos = texelFetch(t_gbufferWorldPos, pixelCoord, 0).rgb;
-		vec3 rawNorm = texelFetch(t_gbufferNormal, pixelCoord, 0).rgb;
+		vec4 normalSample = texelFetch(t_gbufferNormal, pixelCoord, 0);
+		vec3 rawNorm = normalSample.rgb;
 		vec3 meshNormal = length(rawNorm) > 0.001 ? normalize(rawNorm) : vec3(0.0, 1.0, 0.0);
 
 		int materialId = texelFetch(t_gbufferMaterial, pixelCoord, 0).r;
-		meshAlbedo *= getMaterial(meshWorldPos, materialId);
+		hit.dynamicSurface = u_hasDynamicField != 0 && materialId == 15;
+		vec2 params = vec2(texelFetch(t_gbufferAlbedo, pixelCoord, 0).a, normalSample.a);
+		if (params.x < 0.0) meshAlbedo *= getMaterial(meshWorldPos, materialId);
+		sampleStaticVolume = true;
 
-		vec3 col = shadeSurface(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, state);
+		vec3 col = shadeSurface(meshWorldPos, rd, meshAlbedo, materialId, meshNormal, params, state);
 
 		// Fog at mesh depth (Euclidean distance along ray)
 		float meshEuclideanDist = meshDepthLinear / absCosAngle;
@@ -813,18 +861,31 @@ HitData render(in vec2 uv, inout uint state)
 	{
 		vec3 p = ro + object * rd;
 
-		vec3 preScene = sceneSdf(p);
-		float blendFactor = preScene.z;
-		float jitterMask = smoothstep(0.0, 0.5, blendFactor);
-		vec3 matJitter = sampleNoise3(3, state);
-		vec3 materialSamplePos = p + (matJitter - 0.5) * 0.01 * max(object, 5.0) * jitterMask;
+		int materialId;
+		vec3 baseColor, norm;
+		if (dynamicPrimary)
+		{
+			hit.dynamicSurface = true;
+			materialId = 15;
+			baseColor = getMaterial(p, materialId);
+			norm = dynamicFieldNormal(t_dynamicCapture, p, rd);
+		}
+		else
+		{
+			vec3 preScene = sceneSdf(p);
+			float blendFactor = preScene.z;
+			float jitterMask = smoothstep(0.0, 0.5, blendFactor);
+			vec3 matJitter = sampleNoise3(3, state);
+			vec3 materialSamplePos = p + (matJitter - 0.5) * 0.01 * max(object, 5.0) * jitterMask;
 
-		vec3 sceneResult = sceneSdf(materialSamplePos);
-		int materialId = int(sceneResult.y);
-		vec3 baseColor = getMaterial(materialSamplePos, materialId);
-		vec3 norm = getNormal(p);
+			vec3 sceneResult = sceneSdf(materialSamplePos);
+			materialId = int(sceneResult.y);
+			baseColor = getMaterial(materialSamplePos, materialId);
+			norm = getNormal(p);
+		}
 
-		vec3 col = shadeSurface(p, rd, baseColor, materialId, norm, state);
+		sampleStaticVolume = true;
+		vec3 col = shadeSurface(p, rd, baseColor, materialId, norm, vec2(-1), state);
 
 		// Fog at SDF depth (Euclidean distance along ray)
 		float fog = smoothstep(fogStart, fogEnd, object);
@@ -908,7 +969,7 @@ void main()
 
 		out_illumination = vec4(col, hit.linearDepth);
 		out_normal = vec4(hit.normal, hit.hit ? 1.0 : 0.0);
-		out_worldPos = vec4(hit.worldPos, 1.0);
+		out_worldPos = vec4(hit.worldPos, hit.dynamicSurface ? 2.0 : 1.0);
 		out_albedo = vec4(hit.albedo, 1.0);
 		return;
 	}
@@ -923,6 +984,6 @@ void main()
 
 	out_illumination = vec4(illumination, hit.linearDepth);
 	out_normal = vec4(hit.normal, hit.hit ? 1.0 : 0.0);
-	out_worldPos = vec4(hit.worldPos, 1.0);
+	out_worldPos = vec4(hit.worldPos, hit.dynamicSurface ? 2.0 : 1.0);
 	out_albedo = vec4(hit.albedo, 1.0);
 }

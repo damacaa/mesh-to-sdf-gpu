@@ -7,6 +7,7 @@ uniform int u_axis;
 void main()
 {
 	ivec3 p = ivec3(gl_GlobalInvocationID);
+	if (any(greaterThanEqual(p, imageSize(target)))) return;
 	ivec3 q = p;
 	int n = imageSize(source)[u_axis];
 	float best = 1e6;
@@ -16,6 +17,6 @@ void main()
 		float delta = float(i - p[u_axis]);
 		best = min(best, imageLoad(source,q).r + delta * delta);
 	}
-	if (u_axis == 2) best = sqrt(best) * dynamicBoxSize / float(n);
+	if (u_axis == 2) best = sqrt(best) * dynamicGridSize / float(n);
 	imageStore(target,p,vec4(best));
 }

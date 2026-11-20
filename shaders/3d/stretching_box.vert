@@ -27,6 +27,6 @@ void main()
 	v_worldPos = vec3(0, 1.8, 0) + rotation * (local * halfSize);
 	v_normal = rotation * normal;
 	v_texCoord = corner * 0.5 + 0.5;
-	v_color = vec3(1);
+	v_color = vec3(1, 1, 0);
 	gl_Position = u_camMatrix * vec4(v_worldPos, 1);
 }

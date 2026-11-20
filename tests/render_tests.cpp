@@ -177,6 +177,242 @@ std::vector<unsigned char> capture(renderer::PathTracerPipeline& pipeline,
     return pixels;
 }
 
+void testGlobalGeometrySelection()
+{
+    renderer::PathTracerPipeline::Config config;
+    config.renderWidth = width;
+    config.renderHeight = height;
+    config.geometryPreview = true;
+    config.pauseDynamicObject = true;
+    renderer::PathTracerPipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
+    const auto scenes = renderer::getPredefinedScenes();
+
+    // Compare the visible models in Sponza and in the pedestal scene.
+    pipeline.getConfig().showTexturedMeshes = true;
+    for (int index : {5, 2})
+    {
+        const auto& scene = scenes[index];
+        pipeline.setScene(scene, index);
+        require(pipeline.getConfig().showTexturedMeshes, "Changing scenes reset the global geometry selection.");
+        renderer::Camera camera(scene.cameraPosition);
+        camera.yaw = scene.cameraYaw;
+        camera.pitch = scene.cameraPitch;
+        camera.updateVectors();
+        camera.updateMatrix(width, height);
+        const auto mesh = capture(pipeline, camera, scene, 0.0);
+        pipeline.getConfig().showTexturedMeshes = false;
+        const auto field = capture(pipeline, camera, scene, 0.0);
+        require(mesh != field, "Both geometry modes produced the same mesh image.");
+        pipeline.getConfig().showTexturedMeshes = true;
+        require(mesh == capture(pipeline, camera, scene, 0.0), "The original mesh view did not return.");
+    }
+}
+
+void testMovingDynamicMeshShadow()
+{
+    using Pipeline = renderer::PathTracerPipeline;
+    Pipeline::Config config;
+    config.renderWidth = width;
+    config.renderHeight = height;
+    config.enableFxaa = false;
+    auto scenes = renderer::getPredefinedScenes();
+    const auto& scene = scenes.back();
+    Pipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
+    pipeline.setScene(scene, static_cast<int>(scenes.size()) - 1);
+    renderer::Camera camera(scene.cameraPosition);
+    auto aim = [&](float yaw, float pitch) {
+        camera.yaw = yaw;
+        camera.pitch = pitch;
+        camera.updateVectors();
+        camera.updateMatrix(width, height);
+    };
+    aim(0.0f, -3.0f);
+    pipeline.getConfig().atrousIterations = 0;
+    pipeline.render(camera, 0.0, scene);
+    using Stage = Pipeline::LightingStage;
+    const auto first = pipeline.readLighting(Stage::Raw);
+    const auto fresh = pipeline.readLighting(Stage::Temporal);
+    for (size_t i = 0; i < first.size(); ++i)
+        require(glm::vec3(first[i]) == glm::vec3(fresh[i]), "Zero iterations blurred a fresh Sponza frame.");
+    pipeline.render(camera, 0.016, scene);
+    const auto second = pipeline.readLighting(Stage::Raw);
+    const auto integrated = pipeline.readLighting(Stage::Temporal);
+    size_t blended = 0;
+    for (size_t i = 0; i < first.size(); ++i)
+    {
+        float mean = 0.5f * (first[i].r + second[i].r);
+        if (std::abs(first[i].r - second[i].r) > 0.02f && std::abs(integrated[i].r - mean) < 0.005f)
+            ++blended;
+    }
+    require(blended > first.size() / 10, "The dynamic mesh's motion discarded history on the static architecture.");
+    pipeline.restartDynamicExperiment();
+    pipeline.render(camera, 0.0, scene);
+    camera.position = glm::vec3(6.0f, 2.0f, 0.0f);
+    aim(180.0f, 0.0f);
+    pipeline.render(camera, 0.0, scene);
+
+    // Keep the floor visible while the observed mesh moves outside the shot.
+    camera.position = glm::vec3(-2.5f, 2.3f, 0.0f);
+    aim(0.0f, -44.0f);
+    auto floorLighting = [&]() {
+        pipeline.restartSampling(0);
+        pipeline.render(camera, 0.45, scene);
+        return pipeline.readLighting(Pipeline::LightingStage::Raw);
+    };
+    auto retained = floorLighting();
+    pipeline.getConfig().useDynamicReference = true;
+    auto reference = floorLighting();
+    pipeline.clearDynamicCapture();
+    require(reference == floorLighting(), "Clearing camera observations changed the complete mesh reference.");
+    pipeline.getConfig().useDynamicReference = false;
+    auto empty = floorLighting();
+    auto shadowedPixels = [&](const std::vector<glm::vec4>& lighting) {
+        size_t count = 0;
+        for (size_t i = 0; i < empty.size(); ++i)
+            if (empty[i].r - lighting[i].r > 0.02f) ++count;
+        return count;
+    };
+    require(shadowedPixels(retained) > empty.size() / 100, "The observed mesh lost its shadow outside the camera view.");
+    require(shadowedPixels(reference) > empty.size() / 100, "The complete mesh did not cast a shadow.");
+
+    // Resize the grid and change voxel resolution at runtime.
+    pipeline.getConfig().dynamicResolution = 32;
+    pipeline.getConfig().dynamicGridSize = 3.2f;
+    pipeline.getConfig().useDynamicReference = true;
+    auto resizedReference = floorLighting();
+    require(shadowedPixels(resizedReference) > empty.size() / 100, "Resized reference grid did not cast a shadow.");
+
+    pipeline.getConfig().useDynamicReference = false;
+    camera.position = scene.cameraPosition;
+    aim(0.0f, -3.0f);
+    pipeline.render(camera, 0.0, scene);
+    camera.position = glm::vec3(-2.5f, 2.3f, 0.0f);
+    aim(0.0f, -44.0f);
+    auto resizedRetained = floorLighting();
+    require(shadowedPixels(resizedRetained) > empty.size() / 100, "Resized live dynamic grid did not cast a shadow.");
+
+    auto customScene = scene;
+    customScene.dynamicResolution = 64;
+    customScene.dynamicGridSize = 3.5f;
+    pipeline.setScene(customScene, static_cast<int>(scenes.size()) - 1);
+    require(pipeline.getConfig().dynamicResolution == 64 && pipeline.getConfig().dynamicGridSize == 3.5f,
+        "Scene overrides for dynamic resolution and size did not apply.");
+    pipeline.setScene(scene, static_cast<int>(scenes.size()) - 1);
+    require(pipeline.getConfig().dynamicResolution == 48 && pipeline.getConfig().dynamicGridSize == 4.0f,
+        "Default dynamic resolution and size did not restore on scene switch.");
+
+    // Verify the moving mesh rotates 180 degrees between +X and -X travel at the same position (x = 1.5).
+    auto dynOnly = scene;
+    dynOnly.sdfModelPath.clear();
+    dynOnly.enableSdf3DTexture = false;
+    pipeline.setScene(dynOnly, static_cast<int>(scenes.size()) - 1);
+    pipeline.restartDynamicExperiment();
+    camera.position = glm::vec3(-1.5f, 2.0f, 0.0f);
+    aim(0.0f, 0.0f);
+    pipeline.getConfig().showTexturedMeshes = true;
+    pipeline.render(camera, 0.0, dynOnly);
+    const auto meshGoingAway = pipeline.readLighting(Pipeline::LightingStage::Raw);
+    const double halfCycle = 2.0 * 3.14159265358979323846;
+    pipeline.render(camera, halfCycle, dynOnly);
+    const auto meshComingBack = pipeline.readLighting(Pipeline::LightingStage::Raw);
+    const auto meshBackMask = pipeline.readSurfaceMask();
+    int depthDiffCount = 0;
+    for (size_t i = 0; i < meshGoingAway.size(); ++i)
+        if (std::abs(meshGoingAway[i].w - meshComingBack[i].w) > 0.05f) ++depthDiffCount;
+    require(depthDiffCount > 50, "The moving mesh did not rotate when reversing direction.");
+
+    // Verify the rotated local SDF matches the rotated mesh after accumulating across the 180-degree turn.
+    pipeline.getConfig().showTexturedMeshes = false;
+    pipeline.render(camera, halfCycle, dynOnly);
+    const auto fieldComingBack = pipeline.readLighting(Pipeline::LightingStage::Raw);
+    const auto fieldBackMask = pipeline.readSurfaceMask();
+    const float voxel = dynOnly.dynamicGridSize / dynOnly.dynamicResolution;
+    int backVis = 0, backHit = 0, backAcc = 0;
+    for (size_t i = 0; i < meshComingBack.size(); ++i)
+    {
+        if (!meshBackMask[i]) continue;
+        ++backVis;
+        if (fieldBackMask[i])
+        {
+            ++backHit;
+            if (std::abs(meshComingBack[i].w - fieldComingBack[i].w) < 0.25f * voxel) ++backAcc;
+        }
+    }
+    require(backVis > 200 && backHit > 0.98f * backVis && backAcc > 0.85f * backVis,
+        "The rotated dynamic SDF did not align with the rotated mesh.");
+
+    checkGl();
+    std::cout << "PASS: moving dynamic mesh retains its shadow outside the camera view\n";
+}
+
+void testSubvoxelDepth()
+{
+    using Pipeline = renderer::PathTracerPipeline;
+    Pipeline::Config config;
+    config.renderWidth = width;
+    config.renderHeight = height;
+    config.enableAntialiasing = false;
+    config.rayBounces = 1;
+    config.dynamicObject = Pipeline::DynamicObject::StretchingBox;
+    config.fixedBoxPose = true;
+    Pipeline pipeline(config, SHADERS_PATH, ASSETS_PATH);
+    const auto scenes = renderer::getPredefinedScenes();
+
+    auto checkDepth = [&](const renderer::SceneDefinition& scene, float voxel) {
+        renderer::Camera camera(scene.cameraPosition);
+        camera.yaw = scene.cameraYaw;
+        camera.pitch = scene.cameraPitch;
+        camera.updateVectors();
+        camera.updateMatrix(width, height);
+        pipeline.getConfig().showTexturedMeshes = true;
+        pipeline.render(camera, 0, scene);
+        const auto mesh = pipeline.readLighting(Pipeline::LightingStage::Raw);
+        const auto meshMask = pipeline.readSurfaceMask();
+        pipeline.getConfig().showTexturedMeshes = false;
+        pipeline.render(camera, 0, scene);
+        const auto field = pipeline.readLighting(Pipeline::LightingStage::Raw);
+        const auto fieldMask = pipeline.readSurfaceMask();
+        int visible = 0;
+        int hitBoth = 0;
+        int accurate = 0;
+        for (size_t i = 0; i < mesh.size(); ++i)
+        {
+            if (!meshMask[i]) continue;
+            ++visible;
+            if (fieldMask[i])
+            {
+                ++hitBoth;
+                if (std::abs(mesh[i].w - field[i].w) < 0.25f * voxel) ++accurate;
+            }
+        }
+        require(visible > 200, "Too few mesh pixels are visible for the depth check.");
+        require(hitBoth > 0.98f * visible, "The generated surface has holes compared to the rasterized mesh.");
+        require(accurate > 0.85f * visible, "The generated surface lost its position within the voxel.");
+    };
+
+    auto monkey = scenes[3];
+    monkey.sdfTextureResolution = 48;
+    for (auto method : {renderer::SdfMethod::JfaVoxelShell, renderer::SdfMethod::JfaGBufferSplat,
+                        renderer::SdfMethod::JfaCameraGBuffer})
+    {
+        monkey.sdfMethod = method;
+        pipeline.setScene(monkey, 3);
+        checkDepth(monkey, monkey.sdfTextureWorldSize / monkey.sdfTextureResolution);
+    }
+
+    auto box = scenes.back();
+    box.sdfModelPath.clear();
+    box.enableSdf3DTexture = false;
+    pipeline.setScene(box, static_cast<int>(scenes.size()) - 1);
+    for (float thicknessMm : {0.1f, 40.0f})
+    {
+        pipeline.getConfig().boxThicknessMm = thicknessMm;
+        checkDepth(box, box.dynamicGridSize / box.dynamicResolution);
+    }
+    checkGl();
+    std::cout << "PASS: continuous surface depth for static JFA and live camera captures\n";
+}
+
 void testPipeline()
 {
     renderer::PathTracerPipeline::Config config;
@@ -450,8 +686,8 @@ void testMeshToSdfGenerator()
         validateSdfVolumeVoxels(jfaTex);
         generator.computeErrorMetrics(jfaTex, refTex, stats);
         require(stats.hasReferenceComparison, "JfaVoxelShell reference comparison failed.");
-        require(stats.mae < 0.15f && stats.rmse < 0.25f, "JfaVoxelShell error exceeded threshold.");
-        require(stats.signMatchPercent > 85.0f, "JfaVoxelShell sign agreement fell below 85%.");
+        require(stats.mae < 0.01f && stats.rmse < 0.02f, "JfaVoxelShell error exceeded threshold.");
+        require(stats.signMatchPercent > 99.0f, "JfaVoxelShell sign agreement fell below 99%.");
     }
 
     // Check JfaGBufferSplat with JfaPlus1.
@@ -575,6 +811,9 @@ int main()
         testTemporal();
         testVarianceFilter();
         testPipeline();
+        testMovingDynamicMeshShadow();
+        testSubvoxelDepth();
+        testGlobalGeometrySelection();
         testStaticAccumulationConvergence();
         testMeshToSdfGenerator();
         checkGl();

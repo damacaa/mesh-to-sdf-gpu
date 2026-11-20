@@ -23,6 +23,7 @@ namespace renderer
 
 		Texture() = default;
 		Texture(const std::string& imagePath);
+		static Texture loadMaterialMap(const std::string& path, bool srgb);
 		Texture(const glm::vec4& color);
 		Texture(int width, int height, TextureType type);
 

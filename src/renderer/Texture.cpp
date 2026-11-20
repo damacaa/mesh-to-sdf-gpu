@@ -36,6 +36,27 @@ namespace renderer
 		}
 	}
 
+	Texture Texture::loadMaterialMap(const std::string& path, bool srgb)
+	{
+		Texture tex;
+		stbi_set_flip_vertically_on_load(false);
+		unsigned char* pixels = stbi_load(path.c_str(), &tex.m_width, &tex.m_height, &tex.m_channels, 4);
+		if (!pixels)
+		{
+			std::cerr << "Failed to load material map: " << path << std::endl;
+			return tex;
+		}
+		glGenTextures(1, &tex.id);
+		glBindTexture(GL_TEXTURE_2D, tex.id);
+		glTexImage2D(GL_TEXTURE_2D, 0, srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, tex.m_width, tex.m_height,
+			0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		stbi_image_free(pixels);
+		return tex;
+	}
+
 	Texture::Texture(const glm::vec4& color)
 		: m_width(1)
 		, m_height(1)

@@ -2,14 +2,15 @@
 #include "../common/dynamic_grid.glsl"
 layout(local_size_x=8, local_size_y=8) in;
 layout(binding=0) uniform sampler2D positions;
+layout(binding=1) uniform isampler2D materials;
 layout(binding=0, r32ui) uniform uimage3D seeds;
 void main()
 {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(pixel, textureSize(positions,0)))) return;
 	vec4 p = texelFetch(positions,pixel,0);
-	if (p.w < 0.5) return;
-	vec3 uvw = (p.xyz - dynamicBoxMin) / dynamicBoxSize;
+	if (p.w < 0.5 || texelFetch(materials, pixel, 0).r != 15) return;
+	vec3 uvw = (dynamicGridInvRot * (p.xyz - dynamicGridCenter)) / dynamicGridSize + 0.5;
 	if (any(lessThan(uvw,vec3(0))) || any(greaterThanEqual(uvw,vec3(1)))) return;
 	imageAtomicExchange(seeds, ivec3(uvw * imageSize(seeds)), 0u);
 }

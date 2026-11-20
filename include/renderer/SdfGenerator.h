@@ -64,6 +64,18 @@ namespace renderer
 		bool accumulateSeeds = false;
 		bool resetAccumulatedSeeds = false;
 		bool unsignedDistance = false;
+		float shellHalfThicknessVoxels = 0.0f;
+	};
+
+	struct CameraSurfaceCapture
+	{
+		const Texture& worldPositions;
+		const Texture& normals;
+		const Texture& depth;
+		const Texture& materials;
+		int materialId;
+		glm::vec3 origin;
+		glm::mat3 invRotation = glm::mat3(1.0f);
 	};
 
 	class SdfGenerator
@@ -84,6 +96,7 @@ namespace renderer
 
 		// Generates a 3D SDF texture from a triangle model and returns GPU metrics.
 		SdfStats generate(const Model& model, const SdfGenerationParams& params, Texture3D& outputTexture);
+		void generateFromCapture(const CameraSurfaceCapture& capture, SdfGenerationParams params, Texture3D& distance);
 
 		// Compares a candidate 3D SDF volume against a reference volume voxel by voxel.
 		void computeErrorMetrics(const Texture3D& candidateTex, const Texture3D& referenceTex, SdfStats& stats) const;
@@ -92,6 +105,8 @@ namespace renderer
 		void clearPersistentSeeds();
 
 	private:
+		SdfStats generateImpl(const Model* model, const CameraSurfaceCapture* capture,
+			const SdfGenerationParams& params, Texture3D& distance);
 		ComputeShader m_exactBaselineShaderR32F;
 		ComputeShader m_exactBaselineShaderR16F;
 		ComputeShader m_jfaClearShader;
@@ -99,6 +114,8 @@ namespace renderer
 		ComputeShader m_jfaSeedGBufferShader;
 		ComputeShader m_jfaSeedResolveShader;
 		ComputeShader m_jfaStepShader;
+		ComputeShader m_jfaWindingVoxelizeShader;
+		ComputeShader m_jfaWindingPrefixShader;
 		ComputeShader m_jfaFinalizeShaderR32F;
 		ComputeShader m_jfaFinalizeShaderR16F;
 
@@ -113,6 +130,7 @@ namespace renderer
 		GLuint m_timeQuery = 0;
 
 		Texture3D m_atomicSeedTex;
+		Texture3D m_windingDeltaTex;
 		Texture3D m_seedPosTex[2];
 		Texture3D m_seedNormTex[2];
 		Texture3D m_persistentSeedPosTex;

@@ -18,10 +18,9 @@ namespace renderer
 		float cameraPitch;
 		std::vector<Material3D> materials;
 		std::vector<Light3D> lights;
-		bool animatedDynamicBox = false;
-		bool renderMonkeyMesh = false;
-		glm::mat4 monkeyTransform = glm::mat4(1.0f);
-		int monkeyMaterialIndex = 0;
+		bool hasDynamicObject = false;
+		int dynamicResolution = 48;
+		float dynamicGridSize = 4.0f;
 
 		// 3D SDF Texture Configuration for this scene
 		bool enableSdf3DTexture = true;
@@ -52,7 +51,6 @@ namespace renderer
 			cornell.cameraPosition = glm::vec3(0.0f, 2.0f, 8.2f);
 			cornell.cameraYaw = -90.0f;
 			cornell.cameraPitch = 0.0f;
-			cornell.renderMonkeyMesh = false;
 
 			// GLSL injected code for Cornell Box shapes
 			cornell.glslShapesCode = R"(
@@ -169,7 +167,6 @@ namespace renderer
 			primitives.cameraPosition = glm::vec3(0.0f, 2.5f, 5.5f);
 			primitives.cameraYaw = -90.0f;
 			primitives.cameraPitch = -12.0f;
-			primitives.renderMonkeyMesh = false;
 			primitives.enableSdf3DTexture = false;
 			primitives.sdfTextureResolution = 128;
 			primitives.sdfTextureWorldSize = 10.0f;
@@ -178,7 +175,7 @@ namespace renderer
 			primitives.sdfMethod = SdfMethod::ExactBaseline;
 			primitives.jfaVariant = JfaVariant::JfaPlus1;
 			primitives.sdfFormat = SdfFormat::R32F;
-			primitives.sdfModelPath = "assets/monkey/demo.gltf";
+			primitives.sdfModelPath.clear();
 			primitives.autoFitSdfMesh = true;
 
 			primitives.glslShapesCode = R"(
@@ -287,14 +284,6 @@ namespace renderer
 			hybrid.cameraPosition = glm::vec3(0.0f, 2.0f, 4.0f);
 			hybrid.cameraYaw = -90.0f;
 			hybrid.cameraPitch = -10.0f;
-			hybrid.renderMonkeyMesh = true;
-
-			glm::mat4 m = glm::mat4(1.0f);
-			m = glm::translate(m, glm::vec3(0.0f, 1.65f, 0.0f));
-			m = glm::scale(m, glm::vec3(0.9f));
-			hybrid.monkeyTransform = m;
-			hybrid.monkeyMaterialIndex = 9; // Matte monkey
-
 			hybrid.glslShapesCode = R"(
 				// Reflective floor
 				{
@@ -358,12 +347,6 @@ namespace renderer
 			hybrid.materials[13].color = glm::vec4(0.35f, 0.35f, 0.4f, 1.0f);
 			hybrid.materials[13].roughness = 0.7f;
 
-			// Mat 14: 3D SDF Texture Sphere
-			hybrid.materials[14].name = "3D SDF Sphere";
-			hybrid.materials[14].color = glm::vec4(0.2f, 0.85f, 0.45f, 1.0f);
-			hybrid.materials[14].roughness = 0.25f;
-			hybrid.materials[14].metallic = 0.1f;
-
 			// Point light above the monkey
 			hybrid.lights.push_back({.type = 1,
 									 .position = glm::vec3(0.0f, 3.5f, 0.5f),
@@ -378,9 +361,10 @@ namespace renderer
 
 			hybrid.enableSdf3DTexture = true;
 			hybrid.sdfTextureResolution = 64;
-			hybrid.sdfTextureWorldSize = 1.4f;
-			hybrid.sdfTextureOffset = glm::vec3(0.0f, 0.8f, 0.0f);
-			hybrid.sdfTextureMaterialId = 14;
+			hybrid.unsignedMeshDistance = false;
+			hybrid.sdfTextureWorldSize = 2.8f;
+			hybrid.sdfTextureOffset = glm::vec3(0.0f, 1.65f, 0.0f);
+			hybrid.sdfTextureMaterialId = 9;
 			hybrid.sdfMethod = SdfMethod::JfaVoxelShell;
 			hybrid.jfaVariant = JfaVariant::JfaPlus1;
 			hybrid.sdfFormat = SdfFormat::R32F;
@@ -399,7 +383,6 @@ namespace renderer
 			textureOnly.cameraPosition = glm::vec3(0.0f, 2.5f, 5.5f);
 			textureOnly.cameraYaw = -90.0f;
 			textureOnly.cameraPitch = -12.0f;
-			textureOnly.renderMonkeyMesh = false;
 
 			textureOnly.glslShapesCode = R"(
 					// Empty scene - only the 3D volumetric SDF texture is evaluated
@@ -415,7 +398,7 @@ namespace renderer
 			textureOnly.sdfFormat = SdfFormat::R32F;
 			textureOnly.sdfModelPath = "assets/monkey/demo.gltf";
 			textureOnly.autoFitSdfMesh = true;
-			textureOnly.unsignedMeshDistance = true;
+			textureOnly.unsignedMeshDistance = false;
 
 			textureOnly.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -449,7 +432,6 @@ namespace renderer
 			roomScene.cameraPosition = glm::vec3(0.0f, 1.6f, 1.2f);
 			roomScene.cameraYaw = -90.0f;
 			roomScene.cameraPitch = -5.0f;
-			roomScene.renderMonkeyMesh = false;
 
 			roomScene.glslShapesCode = R"(
 	// Empty scene - only the 3D volumetric SDF texture room is evaluated
@@ -465,7 +447,7 @@ namespace renderer
 			roomScene.sdfFormat = SdfFormat::R32F;
 			roomScene.sdfModelPath = "assets/monkey/demo.gltf";
 			roomScene.autoFitSdfMesh = true;
-			roomScene.unsignedMeshDistance = true;
+			roomScene.unsignedMeshDistance = false;
 
 			roomScene.materials.resize(16);
 			// Mat 0: Default background / dummy material
@@ -495,7 +477,7 @@ namespace renderer
 			sponza.cameraPosition = glm::vec3(-5.0f, 2.3f, 0.0f);
 			sponza.cameraYaw = 0.0f;
 			sponza.cameraPitch = 4.0f;
-			sponza.animatedDynamicBox = true;
+			sponza.hasDynamicObject = true;
 
 			sponza.glslShapesCode = R"(
 				// Empty analytic scene - Sponza is evaluated from the 3D SDF volume
@@ -517,7 +499,7 @@ namespace renderer
 			sponza.materials[0].name = "Default";
 			sponza.materials[0].color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
 
-			sponza.materials[15].name = "Stretching Box";
+			sponza.materials[15].name = "Dynamic object";
 			sponza.materials[15].color = glm::vec4(0.55f, 0.035f, 0.025f, 1.0f);
 			sponza.materials[14].name = "Sponza Limestone";
 			sponza.materials[14].color = glm::vec4(0.86f, 0.82f, 0.75f, 1.0f);

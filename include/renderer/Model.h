@@ -29,6 +29,13 @@ namespace renderer
 	};
 	static_assert(sizeof(GpuTriangle) == 96, "GpuTriangle must match std430 layout.");
 
+	struct PrimitiveRange
+	{
+		size_t firstIndex;
+		GLsizei count;
+		int material;
+	};
+
 	class Model
 	{
 	public:
@@ -44,6 +51,7 @@ namespace renderer
 
 		bool loadGLTF(const std::string& gltfPath);
 		void draw(const Shader& shader, const glm::mat4& modelMatrix, int materialIndex = 0) const;
+		void drawWithMaterials(const Shader& shader, const glm::mat4& transform, int materialIndex);
 		void free();
 
 		bool isValid() const { return !m_triangles.empty(); }
@@ -66,6 +74,21 @@ namespace renderer
 		glm::vec3 m_aabbMin = glm::vec3(0.0f);
 		glm::vec3 m_aabbMax = glm::vec3(0.0f);
 		std::vector<GpuTriangle> m_triangles;
+		struct SurfaceMaterial
+		{
+			glm::vec4 color{1.0f};
+			float roughness = 1.0f;
+			float metallic = 1.0f;
+			float normalScale = 1.0f;
+			float alphaCutoff = -1.0f;
+			int colorMap = -1;
+			int normalMap = -1;
+			int surfaceMap = -1;
+		};
+		struct ImageMap { std::string path; bool srgb; };
+		std::vector<PrimitiveRange> m_ranges;
+		std::vector<SurfaceMaterial> m_materials;
+		std::vector<ImageMap> m_maps;
 		std::vector<Texture> m_textures;
 	};
 } // namespace renderer

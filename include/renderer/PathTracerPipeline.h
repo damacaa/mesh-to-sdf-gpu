@@ -22,6 +22,8 @@ namespace renderer
 	class PathTracerPipeline
 	{
 	public:
+		enum class DynamicObject { MovingMesh, StretchingBox };
+
 		struct Config
 		{
 			unsigned int renderWidth = 960;
@@ -32,6 +34,12 @@ namespace renderer
 			bool enableAntialiasing = true;
 			bool geometryPreview = false;
 			bool showVolumeBounds = false;
+			bool showTexturedMeshes = false;
+			DynamicObject dynamicObject = DynamicObject::MovingMesh;
+			bool pauseDynamicObject = false;
+			bool useDynamicReference = false;
+			int dynamicResolution = 48;
+			float dynamicGridSize = 4.0f;
 			float boxThicknessMm = 10.0f;
 			bool fixedBoxPose = false;
 			bool collectGpuTimings = false;
@@ -45,8 +53,8 @@ namespace renderer
 			float phiDepth = 0.1f;
 			float phiLuminance = 4.0f;
 			int historyFixFrames = 4;          // Frames of spatial prefilter after disocclusion (0 = off)
-			float maxFilterRadiusScale = 4.0f; // Max à-trous radius multiplier for short history (1 = off)
-			bool demodulateAlbedo = false;
+			float maxFilterRadiusScale = 4.0f; // Max ÃƒÂ -trous radius multiplier for short history (1 = off)
+			bool demodulateAlbedo = true;
 			int debugView = 0;
 
 			// 3D SDF Texture Parameters
@@ -103,6 +111,8 @@ namespace renderer
 			bool autoFit);
 		void generateSdf3DTexture();
 		void clearAccumulatedSdfSeeds();
+		void clearDynamicCapture() { m_clearDynamicSeeds = true; }
+		void restartDynamicExperiment();
 		void runReferenceComparison();
 		const SdfStats& getLastSdfStats() const { return m_lastSdfStats; }
 		void initSceneTextures(const std::vector<SceneDefinition>& scenes);
@@ -136,16 +146,33 @@ namespace renderer
 		std::string m_shadersRoot;
 		std::string m_assetsRoot;
 
-		void drawDynamicBox(const Camera& camera, double time);
-		void buildDynamicBoxField();
-		Shader m_dynamicBoxShader;
-		ComputeShader m_dynamicBoxSeed;
-		ComputeShader m_dynamicBoxDistance;
-		Texture3D m_dynamicBoxVolumes[2];
+		void loadSdfModel(const std::string& resolvedPath);
+		void drawStaticModel(const Camera& camera, bool writeSurface);
+		void drawDynamicObject(const Camera& camera, double time);
+		void updateDynamicPose(double time);
+		void buildDynamicReference();
+		void buildDynamicField();
+		Shader m_boxShader;
+		SdfGenerator m_dynamicSdfGenerator;
+		Texture3D m_dynamicDistance;
+		Texture3D m_dynamicReference;
+		glm::mat4 m_dynamicMeshTransform{1.0f};
+		glm::vec3 m_dynamicCenter{0.0f};
+		glm::mat3 m_dynamicRotation{1.0f};
+		DynamicObject m_previousDynamicObject = DynamicObject::MovingMesh;
+		bool m_clearDynamicSeeds = true;
+		bool m_previousDynamicReference = false;
+		bool m_previousMeshView = false;
+		int m_builtDynamicResolution = 0;
+		float m_builtDynamicGridSize = 0.0f;
+		int m_dynamicReferenceResolution = 0;
+		float m_dynamicReferenceGridSize = 0.0f;
+		std::optional<double> m_lastDynamicTime;
+		double m_dynamicTime = 0.0;
 		Shader m_boundsShader;
 		bool m_hasDynamicField = false;
 		void drawVolumeBounds();
-		GLuint m_dynamicBoxVao = 0;
+		GLuint m_proceduralVao = 0;
 		Shader m_gbufferShader;
 		Shader m_sdfShader;
 		Shader m_temporalShader;
@@ -160,7 +187,11 @@ namespace renderer
 		bool m_resetCameraSeedsRequested = false;
 
 		// 3D SDF volume textures per scene
-		std::vector<Texture3D> m_scene3DTextures;
+		struct MeshVolume
+		{
+			Texture3D distance;
+		};
+		std::vector<MeshVolume> m_sceneVolumes;
 		int m_currentSceneIndex = 0;
 
 		// Reference SDF cache and metrics for live numerical comparison
@@ -175,11 +206,11 @@ namespace renderer
 
 		struct FrameGpuQueries
 		{
-			enum Timestamp { RenderStart, DynamicBoxStart, DynamicBoxEnd, TraceStart, TraceEnd, RenderEnd, Count };
+			enum Timestamp { RenderStart, DynamicFieldStart, DynamicFieldEnd, TraceStart, TraceEnd, RenderEnd, Count };
 			std::array<GLuint, Count> timestamps{};
 			float sdfBuildMs = 0.0f;
 			bool traced = false;
-			bool builtDynamicBox = false;
+			bool builtDynamicField = false;
 		};
 		std::array<FrameGpuQueries, 8> m_gpuQueries{};
 		size_t m_nextGpuTimingResult = 0;
@@ -220,7 +251,7 @@ namespace renderer
 		Texture m_filteredHistory;
 		bool m_historyValid = false;
 
-		// SVGF Multi-Scale À-Trous Wavelet filter ping-pong resources
+		// SVGF Multi-Scale Ãƒâ‚¬-Trous Wavelet filter ping-pong resources
 		Texture m_atrousPingTexture;
 		Texture m_atrousPongTexture;
 		Framebuffer m_atrousPingFbo;
@@ -240,7 +271,7 @@ namespace renderer
 		Framebuffer m_outputFbo;
 
 		FullscreenQuad m_quad;
-		Model m_monkeyModel;
+		Model m_dynamicModel;
 
 		int m_frameCounter = 0;
 		glm::mat4 m_oldCameraView = glm::mat4(0.0f);

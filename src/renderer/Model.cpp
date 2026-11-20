@@ -328,6 +328,7 @@ namespace renderer
 			std::vector<Vertex>& outVertices,
 			std::vector<GLuint>& outIndices,
 			std::vector<GpuTriangle>& outTriangles,
+			std::vector<PrimitiveRange>& ranges,
 			glm::vec3& aabbMin,
 			glm::vec3& aabbMax)
 		{
@@ -431,6 +432,7 @@ namespace renderer
 				outVertices.push_back(v);
 			}
 
+			const size_t firstIndex = outIndices.size();
 			const size_t triCount = localIndices.size() / 3;
 			outIndices.reserve(outIndices.size() + triCount * 3);
 			outTriangles.reserve(outTriangles.size() + triCount);
@@ -476,6 +478,7 @@ namespace renderer
 				tri.n2 = glm::vec4(outVertices[baseVertex + i2].normal, sheetFlag);
 				outTriangles.push_back(tri);
 			}
+			ranges.push_back({firstIndex, static_cast<GLsizei>(outIndices.size() - firstIndex), primitive.value("material", -1)});
 		}
 
 		void traverseGltfNode(
@@ -486,6 +489,7 @@ namespace renderer
 			std::vector<Vertex>& outVertices,
 			std::vector<GLuint>& outIndices,
 			std::vector<GpuTriangle>& outTriangles,
+			std::vector<PrimitiveRange>& ranges,
 			glm::vec3& aabbMin,
 			glm::vec3& aabbMax)
 		{
@@ -509,7 +513,7 @@ namespace renderer
 						{
 							appendPrimitiveGeometry(
 								root, primitive, buffers, worldMatrix,
-								outVertices, outIndices, outTriangles, aabbMin, aabbMax);
+								outVertices, outIndices, outTriangles, ranges, aabbMin, aabbMax);
 						}
 					}
 				}
@@ -521,7 +525,7 @@ namespace renderer
 				{
 					traverseGltfNode(
 						root, child.get<int>(), worldMatrix, buffers,
-						outVertices, outIndices, outTriangles, aabbMin, aabbMax);
+						outVertices, outIndices, outTriangles, ranges, aabbMin, aabbMax);
 				}
 			}
 		}
@@ -545,7 +549,9 @@ namespace renderer
 				const glm::vec3 p0(tri.v0);
 				const glm::vec3 p1(tri.v1);
 				const glm::vec3 p2(tri.v2);
-				const glm::vec3 faceNorm(tri.n0);
+				const glm::vec3 crossN = glm::cross(p1 - p0, p2 - p0);
+				const float crossLen = glm::length(crossN);
+				const glm::vec3 faceNorm = (crossLen > 1e-12f) ? (crossN / crossLen) : glm::vec3(tri.n0);
 
 				float a0 = cornerAngle(p1 - p0, p2 - p0);
 				float a1 = cornerAngle(p0 - p1, p2 - p1);
@@ -597,6 +603,9 @@ namespace renderer
 		, m_aabbMin(other.m_aabbMin)
 		, m_aabbMax(other.m_aabbMax)
 		, m_triangles(std::move(other.m_triangles))
+		, m_ranges(std::move(other.m_ranges))
+		, m_materials(std::move(other.m_materials))
+		, m_maps(std::move(other.m_maps))
 		, m_textures(std::move(other.m_textures))
 	{
 		other.m_vao = 0;
@@ -617,6 +626,9 @@ namespace renderer
 			m_aabbMin = other.m_aabbMin;
 			m_aabbMax = other.m_aabbMax;
 			m_triangles = std::move(other.m_triangles);
+			m_ranges = std::move(other.m_ranges);
+			m_materials = std::move(other.m_materials);
+			m_maps = std::move(other.m_maps);
 			m_textures = std::move(other.m_textures);
 
 			other.m_vao = 0;
@@ -644,6 +656,9 @@ namespace renderer
 			tex.dispose();
 		}
 		m_textures.clear();
+		m_maps.clear();
+		m_ranges.clear();
+		m_materials.clear();
 		m_triangles.clear();
 		m_aabbMin = glm::vec3(0.0f);
 		m_aabbMax = glm::vec3(0.0f);
@@ -749,6 +764,36 @@ namespace renderer
 			return false;
 		}
 
+		auto mapIndex = [&](const json& info, bool srgb) -> int {
+			const int index = info.value("index", -1);
+			if (index < 0 || !gltfJson.contains("textures") || index >= int(gltfJson["textures"].size())) return -1;
+			const int image = gltfJson["textures"][index].value("source", -1);
+			if (image < 0 || !gltfJson.contains("images") || image >= int(gltfJson["images"].size())) return -1;
+			const auto uri = gltfJson["images"][image].value("uri", std::string());
+			if (uri.empty()) return -1;
+			const auto path = (baseDir / uri).string();
+			for (size_t i = 0; i < m_maps.size(); ++i)
+				if (m_maps[i].path == path && m_maps[i].srgb == srgb) return static_cast<int>(i);
+			m_maps.push_back({path, srgb});
+			return static_cast<int>(m_maps.size()) - 1;
+		};
+		for (const auto& mat : gltfJson.value("materials", json::array()))
+		{
+			SurfaceMaterial surface;
+			const auto pbr = mat.value("pbrMetallicRoughness", json::object());
+			if (pbr.contains("baseColorFactor"))
+				for (int i = 0; i < 4; ++i) surface.color[i] = pbr.at("baseColorFactor").at(i).get<float>();
+			surface.metallic = pbr.value("metallicFactor", 1.0f);
+			surface.roughness = pbr.value("roughnessFactor", 1.0f);
+			surface.colorMap = mapIndex(pbr.value("baseColorTexture", json::object()), true);
+			surface.surfaceMap = mapIndex(pbr.value("metallicRoughnessTexture", json::object()), false);
+			const auto normal = mat.value("normalTexture", json::object());
+			surface.normalMap = mapIndex(normal, false);
+			surface.normalScale = normal.value("scale", 1.0f);
+			if (mat.value("alphaMode", std::string()) == "MASK") surface.alphaCutoff = mat.value("alphaCutoff", 0.5f);
+			m_materials.push_back(surface);
+		}
+
 		std::vector<Vertex> vertices;
 		std::vector<GLuint> indices;
 		glm::vec3 aabbMin(std::numeric_limits<float>::max());
@@ -765,7 +810,7 @@ namespace renderer
 				{
 					traverseGltfNode(
 						gltfJson, nodeId.get<int>(), glm::mat4(1.0f), buffers,
-						vertices, indices, m_triangles, aabbMin, aabbMax);
+						vertices, indices, m_triangles, m_ranges, aabbMin, aabbMax);
 				}
 			}
 		}
@@ -792,7 +837,7 @@ namespace renderer
 				{
 					traverseGltfNode(
 						gltfJson, static_cast<int>(i), glm::mat4(1.0f), buffers,
-						vertices, indices, m_triangles, aabbMin, aabbMax);
+						vertices, indices, m_triangles, m_ranges, aabbMin, aabbMax);
 				}
 			}
 		}
@@ -806,7 +851,7 @@ namespace renderer
 					{
 						appendPrimitiveGeometry(
 							gltfJson, primitive, buffers, glm::mat4(1.0f),
-							vertices, indices, m_triangles, aabbMin, aabbMax);
+							vertices, indices, m_triangles, m_ranges, aabbMin, aabbMax);
 					}
 				}
 			}
@@ -930,15 +975,47 @@ namespace renderer
 		glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
 		shader.setUniform("u_normalMatrix", normalMatrix);
 		shader.setUniform("u_materialIndex", materialIndex);
-		shader.setUniform("u_hasDiffuse", m_textures.empty() ? 0 : 1);
-
-		if (!m_textures.empty())
-		{
-			m_textures[0].bind(0);
-		}
-
+		shader.setUniform("u_useSurface", 0);
 		glBindVertexArray(m_vao);
 		glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, nullptr);
 		glBindVertexArray(0);
+	}
+
+	void Model::drawWithMaterials(const Shader& shader, const glm::mat4& transform, int materialIndex)
+	{
+		if (m_materials.empty())
+		{
+			draw(shader, transform, materialIndex);
+			return;
+		}
+		if (m_textures.empty())
+			for (const auto& map : m_maps) m_textures.push_back(Texture::loadMaterialMap(map.path, map.srgb));
+		shader.setUniform("u_model", transform);
+		shader.setUniform("u_normalMatrix", glm::transpose(glm::inverse(glm::mat3(transform))));
+		shader.setUniform("u_materialIndex", materialIndex);
+		glBindVertexArray(m_vao);
+		for (const auto& range : m_ranges)
+		{
+			const bool valid = range.material >= 0 && range.material < int(m_materials.size());
+			shader.setUniform("u_useSurface", int(valid));
+			if (valid)
+			{
+				const auto& mat = m_materials[range.material];
+				auto bind = [&](int index, int unit) {
+					if (index < 0 || !m_textures[index].id) return 0;
+					m_textures[index].bind(unit);
+					return 1;
+				};
+				shader.setUniform("u_colorMap", bind(mat.colorMap, 0));
+				shader.setUniform("u_normalMap", bind(mat.normalMap, 1));
+				shader.setUniform("u_surfaceMap", bind(mat.surfaceMap, 2));
+				shader.setUniform("u_colorFactor", mat.color);
+				shader.setUniform("u_surfaceFactors", glm::vec4(mat.roughness, mat.metallic, mat.normalScale, mat.alphaCutoff));
+			}
+			glDrawElements(GL_TRIANGLES, range.count, GL_UNSIGNED_INT,
+				reinterpret_cast<const void*>(range.firstIndex * sizeof(GLuint)));
+		}
+		glBindVertexArray(0);
+		shader.setUniform("u_useSurface", 0);
 	}
 } // namespace renderer

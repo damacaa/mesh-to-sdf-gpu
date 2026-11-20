@@ -1,0 +1,52 @@
+#version 460 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(r32i, binding = 0) uniform readonly iimage3D u_windingDelta;
+layout(r32ui, binding = 1) uniform uimage3D u_windingVotes;
+
+uniform ivec3 u_resolution;
+uniform int u_axis; // 0 = +X, 1 = +Y, 2 = +Z
+
+void main()
+{
+	int wAxis = u_axis;
+	int uAxis = (u_axis + 1) % 3;
+	int vAxis = (u_axis + 2) % 3;
+
+	int iu = int(gl_GlobalInvocationID.x);
+	int iv = int(gl_GlobalInvocationID.y);
+	if (iu >= u_resolution[uAxis] || iv >= u_resolution[vAxis])
+	{
+		return;
+	}
+
+	int wRes = u_resolution[wAxis];
+	int total = 0;
+	for (int iw = 0; iw < wRes; ++iw)
+	{
+		ivec3 cell;
+		cell[uAxis] = iu;
+		cell[vAxis] = iv;
+		cell[wAxis] = iw;
+		total += imageLoad(u_windingDelta, cell).r;
+	}
+
+	int fwd = 0;
+	for (int iw = 0; iw < wRes; ++iw)
+	{
+		ivec3 cell;
+		cell[uAxis] = iu;
+		cell[vAxis] = iv;
+		cell[wAxis] = iw;
+		fwd += imageLoad(u_windingDelta, cell).r;
+		// Backward (-w) crossing count equals -(total - fwd) = fwd - total.
+		int bwd = fwd - total;
+		uint addVotes = uint(fwd > 0) + uint(bwd > 0);
+		if (addVotes > 0u)
+		{
+			uint votes = imageLoad(u_windingVotes, cell).r;
+			imageStore(u_windingVotes, cell, uvec4(votes + addVotes, 0u, 0u, 0u));
+		}
+	}
+}

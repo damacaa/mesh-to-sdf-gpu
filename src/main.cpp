@@ -367,6 +367,9 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 				ImGui::TextDisabled("Waiting for GPU timings");
 			}
 
+			int view = pipeline.getConfig().showTexturedMeshes ? 1 : 0;
+			if (ImGui::Combo("Scene geometry", &view, "Generated SDF\0Original textured meshes\0"))
+				pipeline.getConfig().showTexturedMeshes = view == 1;
 			ImGui::Checkbox("Geometry Preview", &pipeline.getConfig().geometryPreview);
 			if (ImGui::IsItemHovered())
 			{
@@ -684,11 +687,50 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 				{
 					if (ImGui::BeginChild("RenderTabScroll", ImVec2(0.0f, 0.0f)))
 					{
-						if (scenes[currentSceneIndex].animatedDynamicBox)
+						if (scenes[currentSceneIndex].hasDynamicObject)
 						{
-							ImGui::SliderFloat("Box thickness (mm)", &pipeline.getConfig().boxThicknessMm,
-								0.1f, 100.0f, "%.1f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
-							ImGui::Checkbox("Use fixed box pose", &pipeline.getConfig().fixedBoxPose);
+							auto& config = pipeline.getConfig();
+							using Object = renderer::PathTracerPipeline::DynamicObject;
+							int object = static_cast<int>(config.dynamicObject);
+							if (ImGui::Combo("Dynamic object", &object, "Moving mesh\0Stretching box\0"))
+								config.dynamicObject = static_cast<Object>(object);
+							const int dynResValues[] = { 24, 32, 48, 64, 96, 128 };
+							const char* dynResLabels[] = {
+								"24 x 24 x 24",
+								"32 x 32 x 32",
+								"48 x 48 x 48",
+								"64 x 64 x 64",
+								"96 x 96 x 96",
+								"128 x 128 x 128"
+							};
+							int dynResIdx = 2;
+							int bestDiff = std::abs(config.dynamicResolution - dynResValues[dynResIdx]);
+							for (int i = 0; i < IM_ARRAYSIZE(dynResValues); ++i)
+							{
+								const int diff = std::abs(config.dynamicResolution - dynResValues[i]);
+								if (diff < bestDiff)
+								{
+									bestDiff = diff;
+									dynResIdx = i;
+								}
+							}
+							if (ImGui::Combo("Dynamic resolution", &dynResIdx, dynResLabels, IM_ARRAYSIZE(dynResLabels)))
+								config.dynamicResolution = dynResValues[dynResIdx];
+							ImGui::SliderFloat("Dynamic volume size (m)", &config.dynamicGridSize,
+								0.5f, 12.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+							if (config.dynamicObject == Object::MovingMesh)
+							{
+								ImGui::Checkbox("Pause dynamic object", &config.pauseDynamicObject);
+								ImGui::Checkbox("Use dynamic mesh for reference shadows", &config.useDynamicReference);
+								if (ImGui::Button("Clear camera observations")) pipeline.clearDynamicCapture();
+								if (ImGui::Button("Restart dynamic experiment")) pipeline.restartDynamicExperiment();
+							}
+							else
+							{
+								ImGui::SliderFloat("Box thickness (mm)", &pipeline.getConfig().boxThicknessMm,
+									0.1f, 100.0f, "%.1f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+								ImGui::Checkbox("Use fixed box pose", &pipeline.getConfig().fixedBoxPose);
+							}
 						}
 						ImGui::Checkbox("Show SDF volume corners", &pipeline.getConfig().showVolumeBounds);
 						if (ImGui::IsItemHovered())
@@ -727,7 +769,7 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 								"Surface Albedo"
 							};
 							ImGui::Combo("View Mode", &pipeline.getConfig().debugView, debugViewNames, IM_ARRAYSIZE(debugViewNames));
-							if (ImGui::SliderInt("À-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5))
+							if (ImGui::SliderInt("Ã€-Trous Iterations", &pipeline.getConfig().atrousIterations, 0, 5))
 							{
 								pipeline.resetAccumulation(true);
 							}
@@ -813,11 +855,11 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 						}
 
 						bool orientationChanged = false;
-						if (ImGui::SliderFloat("Yaw", &camera.yaw, -360.0f, 360.0f, "%.1f°"))
+						if (ImGui::SliderFloat("Yaw", &camera.yaw, -360.0f, 360.0f, "%.1fÂ°"))
 						{
 							orientationChanged = true;
 						}
-						if (ImGui::SliderFloat("Pitch", &camera.pitch, -89.0f, 89.0f, "%.1f°"))
+						if (ImGui::SliderFloat("Pitch", &camera.pitch, -89.0f, 89.0f, "%.1fÂ°"))
 						{
 							orientationChanged = true;
 						}
@@ -839,7 +881,7 @@ static void runViewer(SDL_Window* window, int windowWidth, int windowHeight, boo
 						}
 
 						ImGui::SeparatorText("Optics & Projection");
-						if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f, "%.1f°"))
+						if (ImGui::SliderFloat("FOV", &camera.fov, 20.0f, 100.0f, "%.1fÂ°"))
 						{
 							camera.updateMatrix(windowWidth, windowHeight);
 							pipeline.resetAccumulation();
