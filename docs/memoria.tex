@@ -13,24 +13,24 @@
 \tfmarea{Programación Gráfica y Motores de Videojuegos}
 \tfmtutor{Gonzalo Nicolás Barreales}
 \tfmpra{Joan Arnedo Moreno}
-\tfmdate{8/11/2026}
+\tfmdate{23/12/2026}
 \tfmlanguage{Castellano}
 \tfmkeywords{Campos de distancia con signo, generación acelerada en GPU, iluminación global}
 
 % Resumen en castellano
 \tfmabstractes{%
-Este Trabajo Final de Máster propone diseñar, implementar y evaluar dos métodos de generación de campos de distancia con signo (\textit{Signed Distance Fields}, SDF) volumétricos en GPU a partir de mallas poligonales. Estas representaciones permiten realizar consultas de distancia para el trazado de rayos por software, pero su generación puede resultar costosa al aumentar la resolución del volumen y la complejidad de la geometría.\par\vspace{1mm}
-Se desarrollará un método base de cálculo de distancias mediante \textit{compute shaders} y una alternativa que combine la captura de datos de superficie por rasterización con el algoritmo \textit{Jump Flooding} (JFA) en tres dimensiones. El método base se comprobará con geometrías de control antes de utilizarlo como referencia.\par\vspace{1mm}
-Los campos generados se integrarán en un visor interactivo construido a partir de un prototipo previo del autor. El visor permitirá examinar el volumen y observar su aplicación a iluminación indirecta difusa de un rebote, oclusión ambiental y sombras suaves. Su función será apoyar la evaluación, sin constituir un motor gráfico de propósito general.\par\vspace{1mm}
-La comparación analizará el tiempo de generación, el consumo de memoria de vídeo y el error de distancia sobre un conjunto delimitado de escenas. Se espera identificar las ventajas y limitaciones de cada método, sin presuponer una mejora uniforme en todas las condiciones. Esta segunda entrega consolida la introducción y presenta el estado del arte, la estrategia de desarrollo, las herramientas, el protocolo experimental y el visor interactivo de validación ya implementado.
+Este Trabajo Final de Máster propone diseñar, implementar y evaluar dos familias de métodos de generación de campos de distancia con signo (\textit{Signed Distance Fields}, SDF) volumétricos en GPU a partir de mallas poligonales. Estas representaciones permiten realizar consultas de distancia para el trazado de rayos por software, pero su generación resulta costosa al aumentar la resolución del volumen y la complejidad de la geometría.\par\vspace{1mm}
+Se desarrolla un método base de cálculo exacto de distancias punto-triángulo mediante \textit{compute shaders} con memoria compartida y ángulos sólidos, junto con tres variantes basadas en el algoritmo \textit{Jump Flooding} (JFA) en tres dimensiones: voxelización de corteza superficial con votación axial de signo en seis direcciones, captura ortográfica en seis vistas y captura en vivo desde el G-Buffer de cámara con acumulación temporal de semillas.\par\vspace{1mm}
+Los campos generados se integran en un visor interactivo con \textit{path tracing}, filtrado espacio-temporal SVGF e inspector de cortes ortogonales 2D. Asimismo, se incorpora un volumen SDF dinámico local en la escena Crytek Sponza para evaluar sombras y oclusión de objetos móviles a partir de observaciones parciales de cámara.\par\vspace{1mm}
+La evaluación experimental analiza el tiempo de generación en GPU, el consumo de memoria de vídeo y el error numérico de distancia respecto al método de referencia sobre un conjunto delimitado de escenas de complejidad creciente, identificando las ventajas, compromisos de precisión y condiciones de aplicación de cada enfoque.
 }
 
 % Abstract en inglés (cumple ASD-STE100)
 \tfmabstracten{%
-This master's thesis proposes the design, implementation, and evaluation of two GPU methods for generating volumetric Signed Distance Fields (SDFs) from polygonal meshes. These representations support distance queries for software ray tracing, but their generation can become computationally expensive as volume resolution and geometric complexity increase.\par\vspace{1mm}
-A baseline distance computation method will be implemented using compute shaders. An alternative approach will combine rasterized surface data with the three-dimensional Jump Flooding Algorithm (JFA). The baseline will first be checked against control geometries with known distances before being used as a reference.\par\vspace{1mm}
-The generated fields will be integrated into an interactive viewer adapted from a prototype previously developed by the author. The viewer will support volume inspection and demonstrate one-bounce diffuse indirect lighting, ambient occlusion, and soft shadows. It will serve as an evaluation tool rather than a general-purpose graphics engine.\par\vspace{1mm}
-The experimental comparison will examine generation time, video memory consumption, and distance error across a limited set of test scenes. The aim is to identify the advantages and limitations of each method without assuming consistent improvements under all conditions. This second submission presents the state of the art, the development strategy, the experimental protocol, and the interactive viewer for validation.
+This master's thesis covers the design, implementation, and evaluation of GPU methods that generate volumetric Signed Distance Fields (SDFs) from polygonal meshes. These representations support distance queries for software ray tracing, but generation cost increases with volume resolution and mesh complexity.\par\vspace{1mm}
+The system implements an exact point-to-triangle baseline in compute shaders with shared memory tiling and solid-angle winding numbers. It compares this baseline against three 3D Jump Flooding Algorithm (JFA) methods: triangle shell voxelization with six-direction winding votes, six-view orthographic G-Buffer capture, and live camera G-Buffer capture with temporal seed accumulation.\par\vspace{1mm}
+An interactive path-tracing viewer with SVGF denoising and a 2D orthogonal slice inspector validates the generated 3D textures. The viewer also combines a static scene volume with a local dynamic SDF volume in Crytek Sponza to trace shadows from moving objects.\par\vspace{1mm}
+The experimental evaluation measures GPU generation time, video memory usage, and distance error across test scenes of increasing complexity to identify the trade-offs and operating conditions of each method.
 }
 
 \begin{document}

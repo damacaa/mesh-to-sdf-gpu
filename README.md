@@ -10,15 +10,15 @@ This repository contains the source code and academic documentation for the Mast
 
 ## Project Overview
 
-This project evaluates two GPU methods that generate volumetric Signed Distance Fields (SDFs) from polygonal meshes. It compares a baseline point-to-triangle compute shader method against an alternative method that combines rasterized surface data with the 3D Jump Flooding Algorithm (JFA).
+This project evaluates GPU methods that generate volumetric Signed Distance Fields (SDFs) from polygonal meshes. It compares a baseline point-to-triangle compute shader method (`ExactBaseline`, with shared memory tiling and solid-angle winding numbers) against three 3D Jump Flooding Algorithm (JFA) methods: triangle shell voxelization with six-direction winding votes (`JfaVoxelShell`), six-view orthographic G-Buffer capture (`JfaGBufferSplat`), and live camera G-Buffer capture with temporal seed accumulation (`JfaCameraGBuffer`).
 
-An interactive OpenGL 4.6 path tracer viewer validates the generated 3D distance textures. The viewer uses sphere tracing at 1 sample per pixel (1 SPP), Spatiotemporal Blue Noise (STBN) masks, and Spatiotemporal Variance-Guided Filtering (SVGF) to evaluate one-bounce diffuse indirect lighting, ambient occlusion, and soft shadows.
+An interactive OpenGL 4.6 path tracer viewer validates the generated 3D distance textures. The viewer uses sphere tracing with sign-crossing bisection at 1 sample per pixel (1 SPP), Spatiotemporal Blue Noise (STBN) masks, Spatiotemporal Variance-Guided Filtering (SVGF), a 2D orthogonal slice inspector (isolines and error heatmap), and a local dynamic SDF volume in Crytek Sponza.
 
 ## Repository Structure
 
-- `src/` and `include/`: C++20 source files and header files for the application and rendering pipeline.
-- `shaders/`: GLSL 4.60 fragment, vertex, and compute shaders (`sdf_raymarching.frag`, `generate_3d_sdf.comp`, `svgf_temporal.frag`, `svgf_atrous.frag`, `linear_to_srgb.frag`).
-- `assets/`: Textures and Spatiotemporal Blue Noise (STBN) masks.
+- `src/` and `include/`: C++20 source files and header files for the application, glTF/GLB mesh loader (`Model`), volumetric SDF generator (`SdfGenerator`), and rendering pipeline (`PathTracerPipeline`).
+- `shaders/`: GLSL 4.60 fragment, vertex, and compute shaders (`sdf_exact_baseline.comp`, `jfa_*.comp`, `sdf_raymarching.frag`, `svgf_temporal.frag`, `svgf_atrous.frag`, `linear_to_srgb.frag`).
+- `assets/`: 3D glTF/GLB test models (`monkey/demo.gltf`, `sponza-gltf-pbr/sponza.glb`), PBR textures, and Spatiotemporal Blue Noise (STBN) masks.
 - `third-party/`: Bundled dependencies (SDL3, GLAD, GLM, Dear ImGui, stb, nlohmann/json).
 - `tests/`: Automated GPU regression tests and lighting quality benchmarks.
 - `docs/`: Academic thesis document in LaTeX (`docs/memoria.tex` and modular chapters in `docs/capitulos/`).
@@ -67,9 +67,10 @@ Run the interactive viewer from the root directory of the repository:
 
 - **Right Mouse Button + Drag**: Rotate the camera.
 - **W / A / S / D**: Move the camera horizontally.
-- **Space / Left Shift**: Move the camera up or down.
-- **1 - 5**: Switch between predefined validation scenes (Cornell Box, SDF Primitives, 3D SDF Texture Placeholders).
-- **Dear ImGui Panel**: Adjust SVGF denoiser settings, resolution scale, 3D SDF texture resolution ($32^3$ to $256^3$), and diagnostic views (Final, Raw 1-SPP, Denoised Irradiance, Variance, Normals, Albedo).
+- **Space / Left Ctrl (or E / Q)**: Move the camera up or down.
+- **1 - 6**: Switch between the six predefined validation scenes (Cornell Box, Primitives Showcase, Hybrid Mesh + SDF, 3D Texture Only, 3D Texture Room, and Sponza Atrium).
+- **F3**: Show or hide the Dear ImGui control panel.
+- **Dear ImGui Panel**: Select the 3D SDF generator method (`ExactBaseline`, `JfaVoxelShell`, `JfaGBufferSplat`, `JfaCameraGBuffer`), JFA variant (`Standard`, `JFA+1`, `1+JFA`), volume format (`GL_R32F`, `GL_R16F`), and resolution ($32^3$ to $256^3$). Run reference error comparisons, inspect 2D orthogonal slices, toggle between generated SDF surfaces and original textured meshes, and adjust SVGF denoiser settings.
 
 ### Automated Tests
 

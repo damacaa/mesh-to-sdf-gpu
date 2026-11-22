@@ -29,7 +29,7 @@ Para garantizar la portabilidad, el control explícito sobre la memoria de víde
     SDL3 & Versión 3.2.0 & Creación de ventanas, contexto OpenGL, captura de eventos y temporización. \\ \hline
     GLAD & Especificación Core 4.6 & Carga dinámica de punteros a funciones de OpenGL 4.6 en el host. \\ \hline
     GLM & Versión 1.0.1 & Álgebra lineal tridimensional, matrices de transformación y vectores. \\ \hline
-    Assimp & Versión 5.4+ & Importación de mallas tridimensionales (OBJ, glTF), cálculo de normales y AABB. \\ \hline
+    Assimp / nlohmann-json & Versión 5.4+ / 3.11+ & Importación y deserialización de modelos tridimensionales (glTF 2.0, GLB, OBJ), jerarquía de nodos, materiales PBR y AABB. \\ \hline
     Dear ImGui & Versión 1.91.8 & Interfaz gráfica para control de parámetros, diagnóstico e inspección de volúmenes. \\ \hline
     stb\_image / stb\_image\_write & Versión 2.30 / 1.16 & Carga de recursos auxiliares y exportación de capturas sin pérdida. \\ \hline
     RenderDoc & Versión 1.3x & Inspección de texturas 3D, SSBOs, estados del pipeline y depuración de shaders. \\ \hline
@@ -41,7 +41,7 @@ Para garantizar la portabilidad, el control explícito sobre la memoria de víde
 
 \subsection{Entorno interactivo de validación desarrollado (Hito OE1 y avance OE2)}
 
-Como parte del trabajo realizado hasta esta entrega, se ha implementado y verificado la primera fase del visor interactivo que actuará como banco de pruebas experimental durante todo el proyecto. El desarrollo de este entorno se articula de forma incremental en dos etapas sucesivas: en primer lugar, se implementan primitivas analíticas inyectadas directamente en la función de evaluación de distancias del shader para construir y validar el \textit{path tracer} por \textit{sphere tracing} a 1 muestra por píxel (1 SPP) y la reconstrucción espacio-temporal mediante SVGF \cite{schied2017}; en segundo lugar, se incorpora el soporte y la visualización de texturas tridimensionales de distancia (\texttt{GL\_TEXTURE\_3D}), generadas inicialmente mediante primitivas analíticas codificadas también de forma directa en un \textit{compute shader} a modo de \textit{placeholder}, con el propósito de que sean sustituidas posteriormente por las texturas generadas a partir de mallas poligonales. La Figura~\ref{fig:arquitectura_visor} muestra el flujo de datos entre los distintos pases coordinados por la clase \texttt{renderer::PathTracerPipeline} y la Tabla~\ref{tab:fbos} detalla los \textit{Framebuffer Objects} (FBO) y texturas asociados.
+Como base experimental del proyecto, se ha implementado y verificado la primera fase del visor interactivo que actúa como banco de pruebas visual. El desarrollo de este entorno se articula de forma incremental en dos etapas sucesivas: en primer lugar, se implementan primitivas analíticas inyectadas directamente en la función de evaluación de distancias del shader para construir y validar el \textit{path tracer} por \textit{sphere tracing} a 1 muestra por píxel (1 SPP) y la reconstrucción espacio-temporal mediante SVGF \cite{schied2017}; en segundo lugar, se incorpora el soporte y la visualización de texturas tridimensionales de distancia (\texttt{GL\_TEXTURE\_3D}), generadas inicialmente mediante primitivas analíticas codificadas también de forma directa en un \textit{compute shader} a modo de \textit{placeholder}, con el propósito de ser sustituidas por las texturas generadas a partir de mallas poligonales. La Figura~\ref{fig:arquitectura_visor} muestra el flujo de datos entre los distintos pases coordinados por la clase \texttt{renderer::PathTracerPipeline} y la Tabla~\ref{tab:fbos} detalla los \textit{Framebuffer Objects} (FBO) y texturas asociados.
 
 \begin{figure}[htbp]
   \centering
@@ -136,28 +136,28 @@ El funcionamiento de esta primera fase del entorno de pruebas comprende los sigu
 
 \subsection{Escenas de evaluación y protocolo experimental}
 
-Para la evaluación comparativa de los dos métodos de generación de SDF a partir de mallas poligonales (que se ejecutará en las fases correspondientes a las entregas PEC 3 y PEC 4), se definen los siguientes modelos de entrada y métricas de análisis:
+Para la evaluación comparativa de los métodos de generación de SDF a partir de mallas poligonales, se definen los siguientes modelos de entrada y métricas de análisis:
 
 \subsubsection{Modelos y escenas poligonales de prueba}
 
 \begin{enumerate}
-  \item \textbf{Modelos geométricos de control (Esfera y Cubo poligonales):} Mallas sintéticas cerradas teseladas con densidad poligonal variable ($1.000$ a $20.000$ triángulos) cuyas dimensiones coinciden con funciones SDF analíticas conocidas en forma cerrada:
+  \item \textbf{Modelos geométricos de control y malla canónica Suzanne:} Mallas sintéticas cerradas (esfera y cubo) cuyas dimensiones coinciden con funciones SDF analíticas conocidas en forma cerrada:
   \begin{equation}
     f_{\text{esfera}}(p) = \|p\| - r, \quad f_{\text{cubo}}(p) = \|\max(|p| - b, 0)\| + \min(\max(|p| - b), 0)
   \end{equation}
-  Estas geometrías permitirán comprobar numéricamente la exactitud del generador base en \textit{compute shaders} antes de emplear sus volúmenes como referencia.
-  \item \textbf{Cornell Box poligonal:} Versión discretizada en triángulos de la caja de Cornell tradicional, utilizada para evaluar el comportamiento de ambos generadores en recintos cerrados con ángulos diedros rectos y oclusiones controladas.
-  \item \textbf{Crytek Sponza:} Escena arquitectónica compuesta por aproximadamente $262.000$ triángulos con arcos, columnas y detalles geométricos complejos, destinada a evaluar la escalabilidad temporal y el consumo de memoria ante un número elevado de primitivas.
+  junto con el modelo poligonal \textbf{Suzanne} (\texttt{demo.gltf}), empleado para validar la fidelidad sub-vóxel, la determinación topológica del signo y la captura dinámica desde cámara.
+  \item \textbf{Cornell Box:} Escena de recinto cerrado con ángulos diedros rectos, paredes difusas cromáticas y malla central en textura 3D SDF, utilizada para evaluar el comportamiento de los generadores ante iluminación indirecta (\textit{color bleeding}) y oclusiones controladas.
+  \item \textbf{Crytek Sponza (\texttt{sponza.glb}):} Escena arquitectónica compuesta por más de $262.000$ triángulos con arcos, columnas, cortinas y detalles geométricos complejos, destinada a evaluar la escalabilidad temporal, el consumo de memoria, el tratamiento de superficies abiertas y la interacción con volúmenes SDF dinámicos.
 \end{enumerate}
 
 \subsubsection{Protocolo de medición y métricas cuantitativas}
 
-Los dos generadores se compararán bajo condiciones idénticas de GPU, formato de almacenamiento (\texttt{GL\_R16F} y \texttt{GL\_R32F}) y resolución volumétrica ($64^3, 128^3$ y $256^3$ vóxeles), registrando tres métricas principales:
+Los generadores se comparan bajo condiciones idénticas de GPU, formato de almacenamiento (\texttt{GL\_R16F} y \texttt{GL\_R32F}) y resolución volumétrica ($32^3, 64^3, 128^3$ y $256^3$ vóxeles), registrando tres grupos de métricas principales:
 
 \begin{enumerate}
-  \item \textbf{Tiempo de generación en GPU (ms):} Se aislará el tiempo de ejecución de los \textit{compute shaders} de generación respecto a la CPU y al renderizado del visor mediante objetos de consulta asíncrona de OpenGL (\texttt{GL\_TIME\_ELAPSED}).
-  \item \textbf{Consumo de memoria de vídeo VRAM (MB):} Se contabilizará la memoria estática ocupada por la textura volumétrica de salida (\texttt{GL\_TEXTURE\_3D}) junto con la memoria temporal adicional requerida durante la generación (\textit{buffers} SSBO de geometría y texturas \textit{ping-pong} de coordenadas de semillas en JFA 3D).
-  \item \textbf{Error numérico del campo de distancias:} Tomando el volumen generado por el método base de cálculo exacto punto-triángulo como campo de referencia $f_{\text{ref}}(i, j, k)$, se evaluarán vóxel a vóxel sobre los $V^3$ elementos de la cuadrícula las siguientes métricas de discrepancia frente al volumen obtenido mediante JFA $f_{\text{JFA}}(i, j, k)$:
+  \item \textbf{Tiempo de generación en GPU (ms):} Se aísla el tiempo de ejecución de los \textit{compute shaders} de generación (desglosado en inicialización de semillas, propagación JFA y finalización) respecto a la CPU y al renderizado del visor mediante objetos de consulta de tiempo de OpenGL (\texttt{GL\_TIME\_ELAPSED} y \texttt{GL\_TIMESTAMP}).
+  \item \textbf{Consumo de memoria de vídeo VRAM (MB):} Se contabiliza la memoria estática ocupada por la textura volumétrica de salida (\texttt{GL\_TEXTURE\_3D}) junto con la memoria temporal adicional requerida durante la generación (\textit{buffers} SSBO de geometría, texturas atómicas, acumuladores de signo y texturas \textit{ping-pong} de coordenadas y normales de semillas en JFA 3D).
+  \item \textbf{Error numérico del campo de distancias y coincidencia de signo:} Tomando el volumen generado por el método base de cálculo exacto punto-triángulo como campo de referencia $f_{\text{ref}}(i, j, k)$, se evalúan vóxel a vóxel sobre los $V^3$ elementos de la cuadrícula el porcentaje de coincidencia de signo interior/exterior y las siguientes métricas de discrepancia frente al volumen candidato $f_{\text{JFA}}(i, j, k)$:
   \begin{itemize}
     \item \textbf{Error Absoluto Medio (MAE, \textit{Mean Absolute Error}):}
     \begin{equation}
